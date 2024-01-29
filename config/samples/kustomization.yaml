@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- action_v1_action.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

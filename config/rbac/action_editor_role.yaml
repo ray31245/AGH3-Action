@@ -1,0 +1,31 @@
+# permissions for end users to edit actions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: action-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: agh3-action
+    app.kubernetes.io/part-of: agh3-action
+    app.kubernetes.io/managed-by: kustomize
+  name: action-editor-role
+rules:
+- apiGroups:
+  - action.lkc-lab.com
+  resources:
+  - actions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - action.lkc-lab.com
+  resources:
+  - actions/status
+  verbs:
+  - get
