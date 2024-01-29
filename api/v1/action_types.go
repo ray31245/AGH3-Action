@@ -34,6 +34,8 @@ type ActionSpec struct {
 	JobTemplate batchv1.JobTemplateSpec `json:"jobTemplate"`
 
 	IsActivation bool `json:"isActivation"`
+
+	WorkerHistoryLimit *int32 `json:"WorkerHistoryLimit"`
 }
 
 // ActionStatus defines the observed state of Action

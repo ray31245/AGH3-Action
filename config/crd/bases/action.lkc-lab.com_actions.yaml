@@ -34,6 +34,9 @@ spec:
           spec:
             description: ActionSpec defines the desired state of Action
             properties:
+              WorkerHistoryLimit:
+                format: int32
+                type: integer
               isActivation:
                 type: boolean
               jobTemplate:
@@ -8707,6 +8710,7 @@ spec:
                     type: object
                 type: object
             required:
+            - WorkerHistoryLimit
             - isActivation
             - jobTemplate
             type: object
