@@ -17,6 +17,8 @@ limitations under the License.
 package v1
 
 import (
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -28,15 +30,38 @@ type ActionSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of Action. Edit action_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Specifies the template of worker that will be created when executing a Action.
+	JobTemplate batchv1.JobTemplateSpec `json:"jobTemplate"`
+
+	IsActivation bool `json:"isActivation"`
 }
 
 // ActionStatus defines the observed state of Action
 type ActionStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// Pointers to currently running worker.
+	// +optional
+	Active corev1.ObjectReference `json:"active,omitempty"`
+
+	// ActiveStatus is depended on worker's status
+	ActiveStatus ActiveStatus `json:"activeStatus"`
 }
+
+// Only on of the following status may be recorded on ActiveStatus
+type ActiveStatus string
+
+const (
+	// Action not run yet
+	ActiveStatusPending ActiveStatus = "Pending"
+	// Action is running
+	ActiveStatusRuning ActiveStatus = "Runing"
+	// Action is Successed
+	ActiveStatusSuccessed ActiveStatus = "Successed"
+	// Action is Fail
+	ActiveStatusFail ActiveStatus = "Fail"
+)
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
