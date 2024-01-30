@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -128,7 +130,7 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			ObjectMeta: metav1.ObjectMeta{
 				Labels:      make(map[string]string),
 				Annotations: make(map[string]string),
-				Name:        action.Name,
+				Name:        fmt.Sprintf("%s-%d", action.Name, time.Now().Unix()),
 				Namespace:   action.Namespace,
 			},
 			Spec: batchv1.JobSpec{
