@@ -17,7 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -31,9 +30,10 @@ type ActionSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Specifies the template of worker that will be created when executing a Action.
-	JobTemplate batchv1.JobTemplateSpec `json:"jobTemplate"`
+	Image string   `json:"image"`
+	Args  []string `json:"args"`
 
-	IsActivation bool `json:"isActivation"`
+	Activation bool `json:"activation"`
 
 	WorkerHistoryLimit *int32 `json:"WorkerHistoryLimit"`
 }
