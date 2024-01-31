@@ -47,11 +47,14 @@ spec:
                 description: Specifies the template of worker that will be created
                   when executing a Action.
                 type: string
+              stop:
+                type: boolean
             required:
             - WorkerHistoryLimit
             - activation
             - args
             - image
+            - stop
             type: object
           status:
             description: ActionStatus defines the observed state of Action

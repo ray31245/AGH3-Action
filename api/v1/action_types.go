@@ -34,6 +34,7 @@ type ActionSpec struct {
 	Args  []string `json:"args"`
 
 	Activation bool `json:"activation"`
+	Stop       bool `json:"stop"`
 
 	WorkerHistoryLimit *int32 `json:"WorkerHistoryLimit"`
 }
@@ -63,6 +64,8 @@ const (
 	ActiveStatusSuccessed ActiveStatus = "Successed"
 	// Action is Fail
 	ActiveStatusFail ActiveStatus = "Fail"
+	// Action is Stoped
+	ActiveStatusStop ActiveStatus = "Stop"
 )
 
 //+kubebuilder:object:root=true

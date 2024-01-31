@@ -95,7 +95,7 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	isWorkerFinished := func(job *batchv1.Job) (bool, batchv1.JobConditionType) {
 		for _, c := range job.Status.Conditions {
-			if (c.Type == batchv1.JobComplete || c.Type == batchv1.JobFailed) && c.Status == corev1.ConditionTrue {
+			if (c.Type == batchv1.JobComplete || c.Type == batchv1.JobFailed || c.Type == batchv1.JobSuspended) && c.Status == corev1.ConditionTrue {
 				return true, c.Type
 			}
 		}
@@ -106,6 +106,12 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// update action's status
 	targetActiveStatus := actionv1.ActiveStatusPending
 	if lastWorker != nil {
+		suspend := action.Spec.Stop
+		lastWorker.Spec.Suspend = &suspend
+		if err := r.Update(ctx, lastWorker); err != nil {
+			log.Error(err, "unable to update lastWorker")
+			return ctrl.Result{}, err
+		}
 		_, finishType := isWorkerFinished(lastWorker)
 		switch finishType {
 		case "":
@@ -114,6 +120,8 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			targetActiveStatus = actionv1.ActiveStatusFail
 		case batchv1.JobComplete:
 			targetActiveStatus = actionv1.ActiveStatusSuccessed
+		case batchv1.JobSuspended:
+			targetActiveStatus = actionv1.ActiveStatusStop
 		}
 	}
 	if targetActiveStatus != action.Status.ActiveStatus {
@@ -196,7 +204,7 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// create it on the cluster
-	if action.Spec.Activation && action.Status.ActiveStatus != actionv1.ActiveStatusRuning {
+	if action.Spec.Activation && action.Status.ActiveStatus != actionv1.ActiveStatusRuning && !action.Spec.Stop {
 		if err = r.Create(ctx, worker); err != nil {
 			log.Error(err, "unable to create Worker for Action", "Worker", worker)
 			return ctrl.Result{}, err
