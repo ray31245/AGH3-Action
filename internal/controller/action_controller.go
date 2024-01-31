@@ -43,6 +43,8 @@ type ActionReconciler struct {
 //+kubebuilder:rbac:groups=action.lkc-lab.com,resources=actions,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=action.lkc-lab.com,resources=actions/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=action.lkc-lab.com,resources=actions/finalizers,verbs=update
+//+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=batch,resources=jobs/status,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -82,8 +84,12 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	if len(childWorkers.Items) > 0 {
 		lastWorker = &childWorkers.Items[len(childWorkers.Items)-1]
-		for _, item := range childWorkers.Items[:len(childWorkers.Items)-1] {
-			historyWorkers = append(historyWorkers, &item)
+		for i, _ := range childWorkers.Items[:len(childWorkers.Items)-1] {
+			// if StartTime is nil, sort is wrong
+			if childWorkers.Items[i].Status.StartTime == nil {
+				return ctrl.Result{}, nil
+			}
+			historyWorkers = append(historyWorkers, &childWorkers.Items[i])
 		}
 	}
 
@@ -98,17 +104,26 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// update action's status
-	action.Status.ActiveStatus = actionv1.ActiveStatusPending
+	targetActiveStatus := actionv1.ActiveStatusPending
 	if lastWorker != nil {
 		_, finishType := isWorkerFinished(lastWorker)
 		switch finishType {
 		case "":
-			action.Status.ActiveStatus = actionv1.ActiveStatusRuning
+			targetActiveStatus = actionv1.ActiveStatusRuning
 		case batchv1.JobFailed:
-			action.Status.ActiveStatus = actionv1.ActiveStatusFail
+			targetActiveStatus = actionv1.ActiveStatusFail
 		case batchv1.JobComplete:
-			action.Status.ActiveStatus = actionv1.ActiveStatusSuccessed
+			targetActiveStatus = actionv1.ActiveStatusSuccessed
 		}
+	}
+	if targetActiveStatus != action.Status.ActiveStatus {
+		action.Status.ActiveStatus = targetActiveStatus
+		if err := r.Status().Update(ctx, &action); err != nil {
+			// sync targetActiveStatus and action status
+			log.Error(err, "unable to update Action status")
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// clean up old worker
@@ -191,11 +206,7 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	if err := r.Update(ctx, &action); err != nil {
-		log.Error(err, "unable to update action status")
-		return ctrl.Result{}, err
-	}
-	if err := r.Status().Update(ctx, &action); err != nil {
-		log.Error(err, "unable to update Action status")
+		log.Error(err, "unable to update action")
 		return ctrl.Result{}, err
 	}
 
