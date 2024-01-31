@@ -29,13 +29,17 @@ type ActionSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Specifies the template of worker that will be created when executing a Action.
-	Image string   `json:"image"`
-	Args  []string `json:"args"`
+	// Specifies the image of worker that will be created when executing a Action.
+	Image string `json:"image"`
+	// Specifies the args of worker that will be created when executing a Action.
+	Args []string `json:"args"`
 
+	// If mark Activation to true, when detected by controller, it will run action and resum this value to false to ensure run once
 	Activation bool `json:"activation"`
-	Stop       bool `json:"stop"`
+	// If mark Stop to true, controller will not run action
+	Stop bool `json:"stop"`
 
+	// Limit numbers of old history worker
 	WorkerHistoryLimit *int32 `json:"WorkerHistoryLimit"`
 }
 

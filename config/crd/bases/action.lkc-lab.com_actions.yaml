@@ -35,19 +35,25 @@ spec:
             description: ActionSpec defines the desired state of Action
             properties:
               WorkerHistoryLimit:
+                description: Limit numbers of old history worker
                 format: int32
                 type: integer
               activation:
+                description: If mark Activation to true, when detected by controller,
+                  it will run action and resum this value to false to ensure run once
                 type: boolean
               args:
+                description: Specifies the args of worker that will be created when
+                  executing a Action.
                 items:
                   type: string
                 type: array
               image:
-                description: Specifies the template of worker that will be created
-                  when executing a Action.
+                description: Specifies the image of worker that will be created when
+                  executing a Action.
                 type: string
               stop:
+                description: If mark Stop to true, controller will not run action
                 type: boolean
             required:
             - WorkerHistoryLimit
