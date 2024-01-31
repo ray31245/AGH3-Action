@@ -204,13 +204,16 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// create it on the cluster
-	if action.Spec.Activation && action.Status.ActiveStatus != actionv1.ActiveStatusRuning && !action.Spec.Stop {
-		if err = r.Create(ctx, worker); err != nil {
-			log.Error(err, "unable to create Worker for Action", "Worker", worker)
-			return ctrl.Result{}, err
+	if action.Spec.Activation {
+		if action.Status.ActiveStatus != actionv1.ActiveStatusRuning && !action.Spec.Stop {
+			if err = r.Create(ctx, worker); err != nil {
+				log.Error(err, "unable to create Worker for Action", "Worker", worker)
+				return ctrl.Result{}, err
+			}
+			log.V(1).Info("create Worker for Action run", "worker", worker)
 		}
 		action.Spec.Activation = false
-		log.V(1).Info("create Worker for Action run", "worker", worker)
+		log.V(1).Info("unable to activation action, due to action is running or action is stoped", "action", action)
 	}
 
 	if err := r.Update(ctx, &action); err != nil {
