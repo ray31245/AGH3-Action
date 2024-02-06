@@ -76,6 +76,8 @@ const (
 //+kubebuilder:subresource:status
 
 // Action is the Schema for the actions API
+// +kubebuilder:printcolumn:name="status",type=string,JSONPath=`.status.activeStatus`
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type Action struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
