@@ -23,14 +23,18 @@ import (
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	actionv1 "github.com/Leukocyte-Lab/AGH3-Action/api/v1"
+	HttpService "github.com/Leukocyte-Lab/AGH3-Action/pkg/http_service/action"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -60,7 +64,9 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	var action actionv1.Action
 	if err := r.Get(ctx, req.NamespacedName, &action); err != nil {
-		log.Error(err, "unable to fetch Action")
+		if !apierrors.IsNotFound(err) {
+			log.Error(err, "unable to fetch Action")
+		}
 		// we'll ignore not-found errors, since they can't be fixed by an immediate
 		// requeue (we'll need to wait for a new notification), and we can get them
 		// on deleted requests.
@@ -84,7 +90,7 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	if len(childWorkers.Items) > 0 {
 		lastWorker = &childWorkers.Items[len(childWorkers.Items)-1]
-		for i, _ := range childWorkers.Items[:len(childWorkers.Items)-1] {
+		for i := range childWorkers.Items[:len(childWorkers.Items)-1] {
 			// if StartTime is nil, sort is wrong
 			if childWorkers.Items[i].Status.StartTime == nil {
 				return ctrl.Result{}, nil
@@ -106,9 +112,15 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// update action's status
 	targetActiveStatus := actionv1.ActiveStatusPending
 	if lastWorker != nil {
-		suspend := action.Spec.Stop
-		lastWorker.Spec.Suspend = &suspend
-		if err := r.Update(ctx, lastWorker); err != nil {
+		err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			if err := r.Get(ctx, types.NamespacedName{Name: lastWorker.Name, Namespace: lastWorker.Namespace}, lastWorker); err != nil {
+				return err
+			}
+			suspend := action.Spec.Stop
+			lastWorker.Spec.Suspend = &suspend
+			return r.Update(ctx, lastWorker)
+		})
+		if err != nil {
 			log.Error(err, "unable to update lastWorker")
 			return ctrl.Result{}, err
 		}
@@ -124,10 +136,17 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			targetActiveStatus = actionv1.ActiveStatusStop
 		}
 	}
+
+	// sync targetActiveStatus and action status
 	if targetActiveStatus != action.Status.ActiveStatus {
-		action.Status.ActiveStatus = targetActiveStatus
-		if err := r.Status().Update(ctx, &action); err != nil {
-			// sync targetActiveStatus and action status
+		err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			if err := r.Get(ctx, types.NamespacedName{Name: action.Name, Namespace: action.Namespace}, &action); err != nil {
+				return err
+			}
+			action.Status.ActiveStatus = targetActiveStatus
+			return r.Status().Update(ctx, &action)
+		})
+		if err != nil {
 			log.Error(err, "unable to update Action status")
 			return ctrl.Result{}, err
 		}
@@ -211,17 +230,48 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				return ctrl.Result{}, err
 			}
 			log.V(1).Info("create Worker for Action run", "worker", worker)
+		} else {
+			log.V(1).Info("unable to activation action, due to action is running or action is stoped", "action", action)
 		}
 		action.Spec.Activation = false
-		log.V(1).Info("unable to activation action, due to action is running or action is stoped", "action", action)
 	}
 
-	if err := r.Update(ctx, &action); err != nil {
+	if err := r.Update(ctx, &action); err != nil && !apierrors.IsConflict(err) {
 		log.Error(err, "unable to update action")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ActionReconciler) CreateAction(action *actionv1.Action) error {
+	if err := r.Create(context.Background(), action); err != nil {
+		return fmt.Errorf("ActionReconciler.CreateAction: %w", err)
+	}
+	return nil
+}
+
+func (r *ActionReconciler) GetAction(name string, nameSpace string) (*actionv1.Action, error) {
+	var action actionv1.Action
+	err := r.Get(context.Background(), types.NamespacedName{Name: name, Namespace: nameSpace}, &action)
+	if err != nil {
+		return nil, fmt.Errorf("ActionReconciler.GetAction: %w", err)
+	}
+	return &action, nil
+}
+
+func (r *ActionReconciler) DeleteAction(action *actionv1.Action) error {
+	if err := r.Delete(context.Background(), action, client.PropagationPolicy(metav1.DeletePropagationBackground)); client.IgnoreNotFound(err) != nil {
+		return fmt.Errorf("ActionReconciler.DeleteAction: %w", err)
+	}
+	return nil
+}
+
+func (r *ActionReconciler) UpdateAction(action *actionv1.Action) error {
+	if err := r.Update(context.Background(), action); err != nil {
+		return fmt.Errorf("ActionReconciler.UpdateAction: %w", err)
+	}
+	return nil
 }
 
 var (
@@ -231,6 +281,10 @@ var (
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ActionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	WebhookService := HttpService.New(r)
+	go func() {
+		WebhookService.Run()
+	}()
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &batchv1.Job{}, jobOwnerKey, func(rawObj client.Object) []string {
 		// grab the job object, extract the owner...
 		job := rawObj.(*batchv1.Job)
