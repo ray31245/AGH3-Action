@@ -156,14 +156,13 @@ func StopActionHandler(controller ActionControllerInterface) func(http.ResponseW
 		if nameSpace == "" {
 			nameSpace = "default"
 		}
-		stop := getParamBoolDefault(r, "stop", true)
 		action, err := controller.GetAction(name, nameSpace)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			io.WriteString(w, "fail to stop action"+err.Error())
 			return
 		}
-		action.Spec.Stop = stop
+		action.Spec.Stop = true
 		if err := controller.UpdateAction(action); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			io.WriteString(w, "fail to stop action"+err.Error())

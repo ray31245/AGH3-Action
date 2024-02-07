@@ -112,18 +112,6 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// update action's status
 	targetActiveStatus := actionv1.ActiveStatusPending
 	if lastWorker != nil {
-		err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-			if err := r.Get(ctx, types.NamespacedName{Name: lastWorker.Name, Namespace: lastWorker.Namespace}, lastWorker); err != nil {
-				return err
-			}
-			suspend := action.Spec.Stop
-			lastWorker.Spec.Suspend = &suspend
-			return r.Update(ctx, lastWorker)
-		})
-		if err != nil {
-			log.Error(err, "unable to update lastWorker")
-			return ctrl.Result{}, err
-		}
 		_, finishType := isWorkerFinished(lastWorker)
 		switch finishType {
 		case "":
@@ -222,9 +210,28 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 
+	// stop action's worker
+	if action.Spec.Stop {
+		if lastWorker != nil {
+			err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+				if err := r.Get(ctx, types.NamespacedName{Name: lastWorker.Name, Namespace: lastWorker.Namespace}, lastWorker); err != nil {
+					return err
+				}
+				suspend := true
+				lastWorker.Spec.Suspend = &suspend
+				return r.Update(ctx, lastWorker)
+			})
+			if err != nil {
+				log.Error(err, "unable to update lastWorker")
+				return ctrl.Result{}, err
+			}
+		}
+		action.Spec.Stop = false
+	}
+
 	// create it on the cluster
 	if action.Spec.Activation {
-		if action.Status.ActiveStatus != actionv1.ActiveStatusRuning && !action.Spec.Stop {
+		if action.Status.ActiveStatus != actionv1.ActiveStatusRuning {
 			if err = r.Create(ctx, worker); err != nil {
 				log.Error(err, "unable to create Worker for Action", "Worker", worker)
 				return ctrl.Result{}, err
