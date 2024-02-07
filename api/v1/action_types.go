@@ -34,10 +34,10 @@ type ActionSpec struct {
 	// Specifies the args of worker that will be created when executing a Action.
 	Args []string `json:"args"`
 
-	// If mark Activation to true, when detected by controller, it will run action and resum this value to false to ensure run once
-	Activation bool `json:"activation"`
-	// If mark Stop to true, controller will not run action
-	Stop bool `json:"stop"`
+	// If mark TrigerRun to true, when detected by controller, it will run action and resum this value to false to ensure run once
+	TrigerRun bool `json:"trigerRun"`
+	// If mark Stop to true, when detected by controller, it will stop action and resum this value to false to ensure run once
+	TrigerStop bool `json:"trigerStop"`
 
 	// Limit numbers of old history worker
 	WorkerHistoryLimit *int32 `json:"WorkerHistoryLimit"`

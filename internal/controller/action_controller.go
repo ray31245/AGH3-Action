@@ -211,7 +211,7 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// stop action's worker
-	if action.Spec.Stop {
+	if action.Spec.TrigerStop {
 		if lastWorker != nil {
 			err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 				if err := r.Get(ctx, types.NamespacedName{Name: lastWorker.Name, Namespace: lastWorker.Namespace}, lastWorker); err != nil {
@@ -226,11 +226,11 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				return ctrl.Result{}, err
 			}
 		}
-		action.Spec.Stop = false
+		action.Spec.TrigerStop = false
 	}
 
 	// create it on the cluster
-	if action.Spec.Activation {
+	if action.Spec.TrigerRun {
 		if action.Status.ActiveStatus != actionv1.ActiveStatusRuning {
 			if err = r.Create(ctx, worker); err != nil {
 				log.Error(err, "unable to create Worker for Action", "Worker", worker)
@@ -240,7 +240,7 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		} else {
 			log.V(1).Info("unable to activation action, due to action is running or action is stoped", "action", action)
 		}
-		action.Spec.Activation = false
+		action.Spec.TrigerRun = false
 	}
 
 	if err := r.Update(ctx, &action); err != nil && !apierrors.IsConflict(err) {

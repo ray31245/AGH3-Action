@@ -45,10 +45,6 @@ spec:
                 description: Limit numbers of old history worker
                 format: int32
                 type: integer
-              activation:
-                description: If mark Activation to true, when detected by controller,
-                  it will run action and resum this value to false to ensure run once
-                type: boolean
               args:
                 description: Specifies the args of worker that will be created when
                   executing a Action.
@@ -59,15 +55,20 @@ spec:
                 description: Specifies the image of worker that will be created when
                   executing a Action.
                 type: string
-              stop:
-                description: If mark Stop to true, controller will not run action
+              trigerRun:
+                description: If mark TrigerRun to true, when detected by controller,
+                  it will run action and resum this value to false to ensure run once
+                type: boolean
+              trigerStop:
+                description: If mark Stop to true, when detected by controller, it
+                  will stop action and resum this value to false to ensure run once
                 type: boolean
             required:
             - WorkerHistoryLimit
-            - activation
             - args
             - image
-            - stop
+            - trigerRun
+            - trigerStop
             type: object
           status:
             description: ActionStatus defines the observed state of Action

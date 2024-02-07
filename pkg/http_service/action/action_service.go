@@ -133,7 +133,7 @@ func RunActionHandler(controller ActionControllerInterface) func(http.ResponseWr
 			io.WriteString(w, "fail to run action"+err.Error())
 			return
 		}
-		action.Spec.Activation = true
+		action.Spec.TrigerRun = true
 		if err := controller.UpdateAction(action); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			io.WriteString(w, "fail to run action"+err.Error())
@@ -162,7 +162,7 @@ func StopActionHandler(controller ActionControllerInterface) func(http.ResponseW
 			io.WriteString(w, "fail to stop action"+err.Error())
 			return
 		}
-		action.Spec.Stop = true
+		action.Spec.TrigerStop = true
 		if err := controller.UpdateAction(action); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			io.WriteString(w, "fail to stop action"+err.Error())
@@ -218,7 +218,7 @@ func StressTestHandler(controller ActionControllerInterface) func(http.ResponseW
 				io.WriteString(w, "one of stress action not found, can't run")
 				return
 			}
-			action.Spec.Activation = true
+			action.Spec.TrigerRun = true
 			controller.UpdateAction(action)
 		}
 		timeoutCheck := time.Now()
