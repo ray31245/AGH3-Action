@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,6 +36,7 @@ import (
 
 	actionv1 "github.com/Leukocyte-Lab/AGH3-Action/api/v1"
 	HttpService "github.com/Leukocyte-Lab/AGH3-Action/pkg/http_service/action"
+	mqService "github.com/Leukocyte-Lab/AGH3-Action/pkg/queue_service/action"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -238,7 +240,7 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 			log.V(1).Info("create Worker for Action run", "worker", worker)
 		} else {
-			log.V(1).Info("unable to activation action, due to action is running or action is stoped", "action", action)
+			log.V(1).Info("unable to activation action, due to action is running", "action", action)
 		}
 		action.Spec.TrigerRun = false
 	}
@@ -288,6 +290,19 @@ var (
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ActionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	config := mgr.GetConfig()
+	clientSet, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("Cannot new k8s client: %w", err)
+	}
+	queueClient, err := mqService.New(r, mgr.GetLogger(), clientSet)
+	if err != nil {
+		return fmt.Errorf("fail to setup Rabbitmq: %w", err)
+	}
+	if err = queueClient.Run(); err != nil {
+		return fmt.Errorf("fail to run Rabbitmq: %w", err)
+	}
+
 	WebhookService := HttpService.New(r)
 	go func() {
 		WebhookService.Run()
