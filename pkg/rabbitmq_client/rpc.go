@@ -1,6 +1,7 @@
 package rabbitmqclient
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -323,7 +324,7 @@ type WatchActionLogRequest struct {
 
 type WatchActionLogResponse string
 
-func (r RPC) WatchActionLog(req WatchActionLogRequest) (<-chan WatchActionLogResponse, error) {
+func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-chan WatchActionLogResponse, error) {
 	errCh := make(chan error, 2)
 	logCh := make(chan WatchActionLogResponse)
 	go func() {
@@ -412,6 +413,9 @@ func (r RPC) WatchActionLog(req WatchActionLogRequest) (<-chan WatchActionLogRes
 					errCh <- RpcError{msg: fmt.Errorf("UpdateAction: %s and %s", ErrRetry, ErrRequestTimeout).Error(), errs: []error{ErrRetry, ErrRequestTimeout}}
 					return
 				}
+			case <-ctx.Done():
+				close(logCh)
+				return
 			}
 		}
 
