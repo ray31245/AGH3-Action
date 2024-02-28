@@ -31,6 +31,7 @@ func gracefulShutdown(f func()) {
 }
 
 type RabbitmqClient struct {
+	conn    *amqp.Connection
 	Channel *amqp.Channel
 }
 
@@ -47,7 +48,17 @@ func New(url string) (RabbitmqClient, error) {
 	}
 	gracefulShutdown(func() { err := ch.Close(); log.Println(err) })
 
-	return RabbitmqClient{Channel: ch}, nil
+	return RabbitmqClient{conn: conn, Channel: ch}, nil
+}
+
+func (c RabbitmqClient) ForkClient() (RabbitmqClient, error) {
+	ch, err := c.conn.Channel()
+	if err != nil {
+		return RabbitmqClient{}, fmt.Errorf("failed to open a channel: %w", err)
+	}
+	gracefulShutdown(func() { err := ch.Close(); log.Println(err) })
+
+	return RabbitmqClient{conn: c.conn, Channel: ch}, nil
 }
 
 func (client RabbitmqClient) DeclareQueueRpcActionOperate() (amqp.Queue, error) {
@@ -58,6 +69,21 @@ func (client RabbitmqClient) DeclareQueueRpcActionOperate() (amqp.Queue, error) 
 		false,                // exclusive
 		false,                // no-wait
 		nil,                  // arguments
+	)
+	if err != nil {
+		return amqp.Queue{}, fmt.Errorf("fail to declare a queue: %w", err)
+	}
+	return q, nil
+}
+
+func (client RabbitmqClient) DeclareQueueLaunchAction() (amqp.Queue, error) {
+	q, err := client.Channel.QueueDeclare(
+		"launch_action",                 // name
+		true,                            // durable
+		false,                           // delete when unused
+		false,                           // exclusive
+		false,                           // no-wait
+		amqp.Table{"x-max-priority": 9}, // arguments
 	)
 	if err != nil {
 		return amqp.Queue{}, fmt.Errorf("fail to declare a queue: %w", err)
@@ -169,6 +195,10 @@ type WatchActionLogReqContent struct {
 	Selector SelectOne `json:"selector"`
 }
 
+type LaunchActionRequest struct {
+	Selector SelectOne `json:"selector"`
+}
+
 type WatchStatus string
 
 const (
@@ -249,6 +279,54 @@ func (client RabbitmqClient) RequestRpcActionOperate(rpc_queue amqp.Queue, tempo
 			ReplyTo:       temporaryQueue.Name,
 			Body:          body,
 			Expiration:    expireTimeStr,
+		})
+	if err != nil {
+		return fmt.Errorf("RequestRpcActionOperate: %w", err)
+	}
+	return nil
+}
+
+const (
+	SystemPriority = 0
+	UserPriority   = 1
+)
+
+func (client RabbitmqClient) RequestLaunchActionByUser(launchActionQueue amqp.Queue, temporaryQueue amqp.Queue, corrId string, body []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := client.Channel.PublishWithContext(ctx,
+		"",                     // exchange
+		launchActionQueue.Name, // routing key
+		false,                  // mandatory
+		false,                  // immediate
+		amqp.Publishing{
+			ContentType:   "text/plain",
+			DeliveryMode:  amqp.Persistent,
+			CorrelationId: corrId,
+			ReplyTo:       temporaryQueue.Name,
+			Body:          body,
+			Expiration:    expireTimeStr,
+			Priority:      UserPriority,
+		})
+	if err != nil {
+		return fmt.Errorf("RequestRpcActionOperate: %w", err)
+	}
+	return nil
+}
+
+func (client RabbitmqClient) RequestLaunchActionBySystem(launchActionQueue amqp.Queue, body []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := client.Channel.PublishWithContext(ctx,
+		"",                     // exchange
+		launchActionQueue.Name, // routing key
+		false,                  // mandatory
+		false,                  // immediate
+		amqp.Publishing{
+			ContentType:  "text/plain",
+			DeliveryMode: amqp.Persistent,
+			Body:         body,
+			Priority:     SystemPriority,
 		})
 	if err != nil {
 		return fmt.Errorf("RequestRpcActionOperate: %w", err)

@@ -18,10 +18,12 @@ func (client RabbitmqClient) RPC() RPC {
 }
 
 var (
-	ActionOperateRPCQueueLimit int = 100
-	expireTimeInt              int = 3000 // Millisecond
-	expireTimeStr                  = strconv.Itoa(expireTimeInt)
-	expireTime                     = time.Millisecond * time.Duration(expireTimeInt)
+	ActionOperateRPCQueueLimit     int = 100
+	LaunchActionQueueBySystemLimit int = 1000
+	LaunchActionQueueByUserLimit   int = LaunchActionQueueBySystemLimit + 100
+	expireTimeInt                  int = 3000 // Millisecond
+	expireTimeStr                      = strconv.Itoa(expireTimeInt)
+	expireTime                         = time.Millisecond * (time.Duration(expireTimeInt) + 500)
 )
 
 func SeedCorrelationId() string {
@@ -426,5 +428,77 @@ func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-c
 		return nil, err
 	}
 	return logCh, nil
+}
 
+type UserLaunchActionRequest struct {
+	Selector SelectOne `json:"selector"`
+}
+
+func (r RPC) UserLaunchAction(req UserLaunchActionRequest) error {
+	// generate a temporary queue
+	temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
+	}
+
+	msgs, err := r.client.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w: %w", ErrrCreateConsumer, err).Error(), errs: []error{ErrrCreateConsumer, err}}
+	}
+
+	launchActionQueue, err := r.client.DeclareQueueLaunchAction()
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w", err).Error(), errs: []error{err}}
+	}
+
+	if launchActionQueue.Messages > LaunchActionQueueByUserLimit {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w", ErrRetry).Error(), errs: []error{ErrRetry}}
+	}
+
+	body := LaunchActionRequest(req)
+	reqByte, err := json.Marshal(body)
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w: %w", ErrMarshalRequest, err).Error(), errs: []error{ErrMarshalRequest, err}}
+	}
+
+	corrId := SeedCorrelationId()
+	err = r.client.RequestLaunchActionByUser(launchActionQueue, temporaryQueue, corrId, reqByte)
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
+	}
+
+	extractF := func(response ActionMessageResponse) error { return nil }
+	err = r.client.ReceivesRpcActionOperate(msgs, corrId, extractF)
+	if err != nil {
+		return fmt.Errorf("UserLaunchAction: %w", err)
+	}
+	return nil
+}
+
+type SystemLaunchActionRequest struct {
+	Selector SelectOne `json:"selector"`
+}
+
+func (r RPC) SystemLaunchAction(req SystemLaunchActionRequest) error {
+	launchActionQueue, err := r.client.DeclareQueueLaunchAction()
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w", err).Error(), errs: []error{err}}
+	}
+
+	if launchActionQueue.Messages > LaunchActionQueueBySystemLimit {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w", ErrRetry).Error(), errs: []error{ErrRetry}}
+	}
+
+	body := LaunchActionRequest(req)
+	reqByte, err := json.Marshal(body)
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w: %w", ErrMarshalRequest, err).Error(), errs: []error{ErrMarshalRequest, err}}
+	}
+
+	err = r.client.RequestLaunchActionBySystem(launchActionQueue, reqByte)
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
+	}
+
+	return nil
 }

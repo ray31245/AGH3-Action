@@ -12,6 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"sync"
+	"time"
 
 	actionv1 "github.com/Leukocyte-Lab/AGH3-Action/api/v1"
 	rabbitmqClient "github.com/Leukocyte-Lab/AGH3-Action/pkg/rabbitmq_client"
@@ -27,7 +30,8 @@ import (
 )
 
 var (
-	workerHistoryLimit = int32(3)
+	workerHistoryLimit       = int32(3)
+	RunningWorkerLimitSystem = 100
 )
 
 type ActionControllerInterface interface {
@@ -35,6 +39,12 @@ type ActionControllerInterface interface {
 	GetAction(name string, nameSpace string) (*actionv1.Action, error)
 	DeleteAction(*actionv1.Action) error
 	UpdateAction(action *actionv1.Action) error
+	GetRunningActionCount() (int, error)
+}
+
+type RegisterHook interface {
+	OnSuccess(func())
+	OnFinish(func())
 }
 
 type RabbitmqService struct {
@@ -69,7 +79,7 @@ func New(ac ActionControllerInterface, logger logr.Logger, clientSet kubernetes.
 	return res, nil
 }
 
-func (service RabbitmqService) Run() error {
+func (service RabbitmqService) Run(hook RegisterHook) error {
 	client := service.client
 	q, err := client.DeclareQueueRpcActionOperate()
 	if err != nil {
@@ -91,12 +101,13 @@ func (service RabbitmqService) Run() error {
 
 	go func() {
 		for d := range operateMessges {
+			// TODO: try to remove this goroutine and auto-ack and ack message somewhere
 			go func(d amqp.Delivery) {
 				actMsg := rabbitmqClient.ActionOperateMessageRequest{}
 				err := json.Unmarshal(d.Body, &actMsg)
 				if err != nil {
 					client.ResponseErrorMessage(d,
-						fmt.Errorf("RabbitmqService.Run(): %w: %s", rabbitmqClient.ErrUnmarshalRequest, err).Error(),
+						fmt.Errorf("unmarshal operateMessges to  actionOperateMessageRequest fail: %w: %s", rabbitmqClient.ErrUnmarshalRequest, err).Error(),
 						rabbitmqClient.ErrorCodeUnmarshalRequest,
 					)
 					return
@@ -121,6 +132,130 @@ func (service RabbitmqService) Run() error {
 					)
 				}
 			}(d)
+		}
+	}()
+
+	launchActionQueue, err := client.DeclareQueueLaunchAction()
+	if err != nil {
+		return fmt.Errorf("fail to declare a DeclareQueueLaunchAction: %w", err)
+	}
+	launchMessges, err := client.Channel.Consume(
+		launchActionQueue.Name, // queue
+		"",                     // consumer
+		false,                  // auto-ack
+		false,                  // exclusive
+		false,                  // no-local
+		false,                  // no-wait
+		nil,                    //args
+	)
+	if err != nil {
+		return fmt.Errorf("fail to register a consumer: %w", err)
+	}
+
+	var mu *sync.Mutex = new(sync.Mutex)
+
+	hook.OnFinish(func() {
+		count, err := service.ac.GetRunningActionCount()
+		if err != nil {
+			service.logger.Error(err, "failed to GetRunningActionCount")
+			return
+		}
+		if count <= RunningWorkerLimitSystem {
+			mu.TryLock()
+			mu.Unlock()
+		}
+		service.logger.V(1).Info("get numbers of running worker when finish", "number", count)
+	})
+
+	go func() {
+		for d := range launchMessges {
+			launchMsg := rabbitmqClient.LaunchActionRequest{}
+			err := json.Unmarshal(d.Body, &launchMsg)
+			if err != nil {
+				if d.ReplyTo != "" {
+					client.ResponseErrorMessage(d,
+						fmt.Errorf("unmarshal launchMessges to launchActionRequest fail: %w: %s", rabbitmqClient.ErrUnmarshalRequest, err).Error(),
+						rabbitmqClient.ErrorCodeUnmarshalRequest,
+					)
+				} else {
+					service.logger.Error(err, "Failed to Unmarshal message to LaunchActionRequest")
+				}
+				d.Ack(false)
+				continue
+			}
+
+			runningWorkerCount, err := service.ac.GetRunningActionCount()
+			if err != nil {
+				if d.ReplyTo != "" {
+					client.ResponseErrorMessage(d,
+						fmt.Errorf("check and unlock fail: %w", err).Error(),
+					)
+				} else {
+					service.logger.Error(err, "Failed to get running worker count")
+				}
+				d.Ack(false)
+				continue
+			}
+			service.logger.V(1).Info("get numbers of running worker when launch", "number", runningWorkerCount)
+			if runningWorkerCount <= RunningWorkerLimitSystem {
+				mu.TryLock()
+				mu.Unlock()
+			}
+
+			mu.Lock()
+
+			if launchMsg.Selector.NameSpace == "" {
+				launchMsg.Selector.NameSpace = "default"
+			}
+			log.Println(launchMsg.Selector.Name, launchMsg.Selector.NameSpace)
+			action, err := service.ac.GetAction(launchMsg.Selector.Name, launchMsg.Selector.NameSpace)
+			if err != nil {
+				if d.ReplyTo != "" {
+					client.ResponseErrorMessage(d,
+						fmt.Errorf("get the want to launch action fail: %w: %w", rabbitmqClient.ErrActionNotfound, err).Error(),
+						rabbitmqClient.ErrorCodeActionNotfound,
+					)
+				} else {
+					service.logger.Error(err, "Failed to get action")
+				}
+				d.Ack(false)
+				continue
+			}
+			action.Spec.TrigerRun = true
+			err = service.ac.UpdateAction(action)
+			if err != nil {
+				if d.ReplyTo != "" {
+					client.ResponseErrorMessage(d,
+						fmt.Errorf("launch action fail: %w", err).Error(),
+					)
+				} else {
+					service.logger.Error(err, "Failed to launch action")
+				}
+				d.Ack(false)
+				continue
+			}
+			if d.ReplyTo != "" {
+				service.client.ResponseMessage(d, "")
+			}
+			d.Ack(false)
+
+			checkCount := 0
+			for {
+				checkAction, err := service.ac.GetAction(action.Name, action.Namespace)
+				if err != nil {
+					service.logger.Error(err, fmt.Sprintf("failed to check current action (%s)", action.Name))
+				} else {
+					if checkAction.Status.ActiveStatus == actionv1.ActiveStatusRuning {
+						break
+					}
+				}
+				time.Sleep(100 * time.Millisecond)
+				checkCount++
+				if checkCount > 5 {
+					break
+				}
+			}
+			continue
 		}
 	}()
 

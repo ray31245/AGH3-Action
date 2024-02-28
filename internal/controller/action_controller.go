@@ -43,7 +43,8 @@ import (
 // ActionReconciler reconciles a Action object
 type ActionReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme        *runtime.Scheme
+	lifecycleHook lifecycleHook
 }
 
 //+kubebuilder:rbac:groups=action.lkc-lab.com,resources=actions,verbs=get;list;watch;create;update;patch;delete
@@ -139,6 +140,16 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if err != nil {
 			log.Error(err, "unable to update Action status")
 			return ctrl.Result{}, err
+		}
+		if targetActiveStatus == actionv1.ActiveStatusSuccessed || targetActiveStatus == actionv1.ActiveStatusFail {
+			if r.lifecycleHook.ActionFinish != nil {
+				r.lifecycleHook.ActionFinish()
+			}
+			if targetActiveStatus == actionv1.ActiveStatusSuccessed {
+				if r.lifecycleHook.ActionSuccess != nil {
+					r.lifecycleHook.ActionSuccess()
+				}
+			}
 		}
 		return ctrl.Result{}, nil
 	}
@@ -282,10 +293,36 @@ func (r *ActionReconciler) UpdateAction(action *actionv1.Action) error {
 	}
 	return nil
 }
+func (r *ActionReconciler) GetRunningActionCount() (int, error) {
+	// var ownPod corev1.PodList
+	var runningActions actionv1.ActionList
+	if err := r.List(context.Background(), &runningActions, client.MatchingFields{actionActiveStatusKey: string(actionv1.ActiveStatusRuning)}); err != nil {
+		return 0, fmt.Errorf("ActionReconciler.GetRunningAction: %w", err)
+	}
+	return len(runningActions.Items), nil
+}
+
+type lifecycleHook struct {
+	ActionFinish  func()
+	ActionSuccess func()
+}
+
+type HookRegister struct {
+	hook *lifecycleHook
+}
+
+func (h *HookRegister) OnSuccess(f func()) {
+	h.hook.ActionSuccess = f
+}
+
+func (h *HookRegister) OnFinish(f func()) {
+	h.hook.ActionFinish = f
+}
 
 var (
-	jobOwnerKey = ".metadata.controller"
-	apiGVStr    = actionv1.GroupVersion.String()
+	jobOwnerKey           = ".metadata.controller"
+	actionActiveStatusKey = "status.activeStatus"
+	apiGVStr              = actionv1.GroupVersion.String()
 )
 
 // SetupWithManager sets up the controller with the Manager.
@@ -293,13 +330,13 @@ func (r *ActionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	config := mgr.GetConfig()
 	clientSet, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return fmt.Errorf("Cannot new k8s client: %w", err)
+		return fmt.Errorf("cannot new k8s client: %w", err)
 	}
-	queueClient, err := mqService.New(r, mgr.GetLogger(), clientSet)
+	queueService, err := mqService.New(r, mgr.GetLogger(), clientSet)
 	if err != nil {
 		return fmt.Errorf("fail to setup Rabbitmq: %w", err)
 	}
-	if err = queueClient.Run(); err != nil {
+	if err = queueService.Run(&HookRegister{&r.lifecycleHook}); err != nil {
 		return fmt.Errorf("fail to run Rabbitmq: %w", err)
 	}
 
@@ -321,6 +358,12 @@ func (r *ActionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 		// ...and if so, return it
 		return []string{owner.Name}
+	}); err != nil {
+		return err
+	}
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &actionv1.Action{}, actionActiveStatusKey, func(rawObj client.Object) []string {
+		action := rawObj.(*actionv1.Action)
+		return []string{string(action.Status.ActiveStatus)}
 	}); err != nil {
 		return err
 	}
