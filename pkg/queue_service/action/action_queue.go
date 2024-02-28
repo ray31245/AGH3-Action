@@ -43,8 +43,8 @@ type ActionControllerInterface interface {
 }
 
 type RegisterHook interface {
-	OnSuccess(func())
-	OnFinish(func())
+	OnSuccess(func(actionv1.Action))
+	OnFinish(func(actionv1.Action))
 }
 
 type RabbitmqService struct {
@@ -154,7 +154,8 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 
 	var mu *sync.Mutex = new(sync.Mutex)
 
-	hook.OnFinish(func() {
+	// register event on action finish
+	hook.OnFinish(func(actionv1.Action) {
 		count, err := service.ac.GetRunningActionCount()
 		if err != nil {
 			service.logger.Error(err, "failed to GetRunningActionCount")
@@ -259,6 +260,48 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 		}
 	}()
 
+	err = client.DeclareExchangeActionResult()
+	if err != nil {
+		return fmt.Errorf("failed to declare exchange: %w", err)
+	}
+
+	hook.OnFinish(func(a actionv1.Action) {
+		resContent := rabbitmqClient.ActionResultMessage{
+			Action: rabbitmqClient.ActionModel{
+				NameSpace: a.Namespace,
+				Name:      a.Name,
+				HistoryID: a.Spec.HistoryID,
+				Image:     a.Spec.Image,
+				Args:      a.Spec.Args,
+			},
+			Status: rabbitmqClient.ActionStatus(a.Status.ActiveStatus),
+		}
+		res, err := json.Marshal(resContent)
+		if err != nil {
+			service.logger.Error(err, "failed to Marshal ActionResult")
+			return
+		}
+		log.Println(a.Name)
+		log.Println(a.Spec.HistoryID)
+		err = client.Channel.PublishWithContext(
+			context.Background(),
+			rabbitmqClient.ActionResultExchange.Name,
+			a.Spec.HistoryID,
+			false,
+			false,
+			amqp.Publishing{
+				DeliveryMode: amqp.Persistent,
+				ContentType:  "text/plain",
+				Body:         []byte(res),
+			},
+		)
+		if err != nil {
+			service.logger.Error(err, "failed to publish ActionResultMessage")
+			return
+		}
+		service.logger.V(1).Info("success publish result of action", "action", a)
+	})
+
 	return nil
 }
 
@@ -281,6 +324,7 @@ func (service RabbitmqService) createActionHandler(contentStr string, d amqp.Del
 			Namespace: content.Action.NameSpace,
 		},
 		Spec: actionv1.ActionSpec{
+			HistoryID:          content.Action.HistoryID,
 			Image:              content.Action.Image,
 			Args:               content.Action.Args,
 			WorkerHistoryLimit: &workerHistoryLimit,
@@ -330,6 +374,7 @@ func (service RabbitmqService) getActionHandler(contentStr string, d amqp.Delive
 		Action: rabbitmqClient.ActionModel{
 			NameSpace: action.Namespace,
 			Name:      action.Name,
+			HistoryID: action.Spec.HistoryID,
 			Image:     action.Spec.Image,
 			Args:      action.Spec.Args,
 		},
@@ -405,6 +450,7 @@ func (service RabbitmqService) updateActionHandler(contentStr string, d amqp.Del
 			Namespace: content.Action.NameSpace,
 		},
 		Spec: actionv1.ActionSpec{
+			HistoryID:          content.Action.HistoryID,
 			Image:              content.Action.Image,
 			Args:               content.Action.Args,
 			WorkerHistoryLimit: &workerHistoryLimit,

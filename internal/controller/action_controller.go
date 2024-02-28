@@ -143,11 +143,15 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 		if targetActiveStatus == actionv1.ActiveStatusSuccessed || targetActiveStatus == actionv1.ActiveStatusFail {
 			if r.lifecycleHook.ActionFinish != nil {
-				r.lifecycleHook.ActionFinish()
+				for _, f := range r.lifecycleHook.ActionFinish {
+					f(action)
+				}
 			}
 			if targetActiveStatus == actionv1.ActiveStatusSuccessed {
 				if r.lifecycleHook.ActionSuccess != nil {
-					r.lifecycleHook.ActionSuccess()
+					for _, f := range r.lifecycleHook.ActionSuccess {
+						f(action)
+					}
 				}
 			}
 		}
@@ -303,20 +307,20 @@ func (r *ActionReconciler) GetRunningActionCount() (int, error) {
 }
 
 type lifecycleHook struct {
-	ActionFinish  func()
-	ActionSuccess func()
+	ActionFinish  []func(actionv1.Action)
+	ActionSuccess []func(actionv1.Action)
 }
 
 type HookRegister struct {
 	hook *lifecycleHook
 }
 
-func (h *HookRegister) OnSuccess(f func()) {
-	h.hook.ActionSuccess = f
+func (h *HookRegister) OnSuccess(f func(actionv1.Action)) {
+	h.hook.ActionSuccess = append(h.hook.ActionSuccess, f)
 }
 
-func (h *HookRegister) OnFinish(f func()) {
-	h.hook.ActionFinish = f
+func (h *HookRegister) OnFinish(f func(actionv1.Action)) {
+	h.hook.ActionFinish = append(h.hook.ActionFinish, f)
 }
 
 var (

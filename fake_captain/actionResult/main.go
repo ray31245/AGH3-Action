@@ -1,10 +1,10 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	rabbitmqClient "github.com/Leukocyte-Lab/AGH3-Action/pkg/rabbitmq_client"
-	"github.com/rabbitmq/amqp091-go"
 )
 
 func failOnError(err error, msg string) {
@@ -18,23 +18,33 @@ func main() {
 	failOnError(err, "Failed to create rabbitmqClient")
 
 	action := rabbitmqClient.ActionModel{
-		Name:  "foo",
-		Image: "busybox",
+		Name:      "foo",
+		HistoryID: "aaa",
+		Image:     "busybox",
 		Args: []string{
 			"ping",
 			"127.0.0.1",
 			"-c",
-			"30",
+			"10",
 		},
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result, receiveActionResultQueue, err := client.ListenOnActionResult(ctx)
+	failOnError(err, "Failed to start ListenOnActionResult")
+
 	err = client.RPC().CreateAction(rabbitmqClient.CreateActionRequest{
 		Action: action,
 	})
 	failOnError(err, "Failed to create action")
 
-	err = client.RPC().LaunchAction(amqp091.Queue{}).UserLaunchAction(rabbitmqClient.UserLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: action.Name + "123"}})
+	err = client.RPC().LaunchAction(receiveActionResultQueue).UserLaunchAction(rabbitmqClient.UserLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: action.Name}, HistoryID: action.HistoryID})
 	log.Println(err)
 	log.Printf("Success launch action: %t", err == nil)
+
+	for v := range result {
+		log.Println(v)
+	}
 
 	// count := 50
 	// actionList := []rabbitmqClient.ActionModel{}

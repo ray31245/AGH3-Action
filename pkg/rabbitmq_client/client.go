@@ -35,6 +35,16 @@ type RabbitmqClient struct {
 	Channel *amqp.Channel
 }
 
+type Exchange struct {
+	Name       string
+	Type       string
+	Durable    bool
+	AutoDelete bool
+	Internal   bool
+	NoWait     bool
+	Arguments  amqp.Table
+}
+
 func New(url string) (RabbitmqClient, error) {
 	conn, err := amqp.Dial(url)
 	if err != nil {
@@ -76,6 +86,29 @@ func (client RabbitmqClient) DeclareQueueRpcActionOperate() (amqp.Queue, error) 
 	return q, nil
 }
 
+var ActionResultExchange = Exchange{
+	Name:       "action_result",
+	Type:       "direct",
+	Durable:    true,
+	AutoDelete: false,
+	Internal:   false,
+	NoWait:     false,
+	Arguments:  nil,
+}
+
+func (client RabbitmqClient) DeclareExchangeActionResult() error {
+	err := client.Channel.ExchangeDeclare(
+		ActionResultExchange.Name,
+		ActionResultExchange.Type,
+		ActionResultExchange.Durable,
+		ActionResultExchange.AutoDelete,
+		ActionResultExchange.Internal,
+		ActionResultExchange.NoWait,
+		ActionResultExchange.Arguments,
+	)
+	return err
+}
+
 func (client RabbitmqClient) DeclareQueueLaunchAction() (amqp.Queue, error) {
 	q, err := client.Channel.QueueDeclare(
 		"launch_action",                 // name
@@ -92,6 +125,21 @@ func (client RabbitmqClient) DeclareQueueLaunchAction() (amqp.Queue, error) {
 }
 
 func (client RabbitmqClient) DeclareTemporaryQueueRpcActionOperate() (amqp.Queue, error) {
+	q, err := client.Channel.QueueDeclare(
+		"",    // name
+		true,  // durable
+		false, // delete when unused
+		true,  // exclusive
+		false, // no-wait
+		nil,   // arguments
+	)
+	if err != nil {
+		return amqp.Queue{}, fmt.Errorf("DeclareTemporaryQueueRpcActionOperate: %w", err)
+	}
+	return q, nil
+}
+
+func (client RabbitmqClient) DeclareTemporaryQueueActionResult() (amqp.Queue, error) {
 	q, err := client.Channel.QueueDeclare(
 		"",    // name
 		true,  // durable
@@ -156,6 +204,7 @@ type ActionOperateMessageRequest struct {
 type ActionModel struct {
 	NameSpace string   `json:"nameSpace"`
 	Name      string   `json:"name"`
+	HistoryID string   `json:"historyID"`
 	Image     string   `json:"image"`
 	Args      []string `json:"args"`
 }
@@ -210,6 +259,11 @@ const (
 type WatchActionLogResContent struct {
 	WatchStatus WatchStatus `json:"watchStatus"`
 	Log         string      `json:"log"`
+}
+
+type ActionResultMessage struct {
+	Action ActionModel  `json:"action"`
+	Status ActionStatus `json:"status"`
 }
 
 type ActionMessageResponse struct {
@@ -371,4 +425,65 @@ func (client RabbitmqClient) ReceivesRpcActionOperate(msgs <-chan amqp.Delivery,
 			return RpcError{msg: fmt.Errorf("RabbitmqClient.ReceivesRpcActionOperate: %s and %s", ErrRetry, ErrRequestTimeout).Error(), errs: []error{ErrRetry, ErrRequestTimeout}}
 		}
 	}
+}
+
+func (client RabbitmqClient) ListenOnActionResult(ctx context.Context) (<-chan ActionResultMessage, amqp.Queue, error) {
+	forkClient, err := client.ForkClient()
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to fork client: %w", err)
+	}
+
+	err = forkClient.Channel.Qos(
+		1,
+		0,
+		false,
+	)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to bind queue: %w", err)
+	}
+
+	receiveActionResultQueue, err := forkClient.DeclareTemporaryQueueActionResult()
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to declare temporary queue: %w", err)
+	}
+
+	err = forkClient.DeclareExchangeActionResult()
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to declare exchange: %w", err)
+	}
+
+	msgs, err := client.Channel.Consume(
+		receiveActionResultQueue.Name,
+		"",
+		true,
+		true,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to declare consumer: %w", err)
+	}
+	res := make(chan ActionResultMessage)
+	go func() {
+		for {
+			select {
+			case v, ok := <-msgs:
+				if !ok {
+					close(res)
+					return
+				}
+				resultMsg := ActionResultMessage{}
+				err := json.Unmarshal(v.Body, &resultMsg)
+				if err != nil {
+					log.Println("Unmarshal message to ActionResultMessage")
+				}
+				res <- resultMsg
+			case <-ctx.Done():
+				close(res)
+				return
+			}
+		}
+	}()
+	return res, receiveActionResultQueue, nil
 }

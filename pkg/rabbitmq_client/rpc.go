@@ -3,10 +3,13 @@ package rabbitmqclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
 	"time"
+
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type RPC struct {
@@ -430,11 +433,35 @@ func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-c
 	return logCh, nil
 }
 
-type UserLaunchActionRequest struct {
-	Selector SelectOne `json:"selector"`
+type LaunchAction struct {
+	client                   RabbitmqClient
+	receiveActionResultQueue amqp.Queue
 }
 
-func (r RPC) UserLaunchAction(req UserLaunchActionRequest) error {
+func (r RPC) LaunchAction(receiveActionResultQueue amqp.Queue) LaunchAction {
+	return LaunchAction{
+		client:                   r.client,
+		receiveActionResultQueue: receiveActionResultQueue,
+	}
+}
+
+type UserLaunchActionRequest struct {
+	Selector  SelectOne `json:"selector"`
+	HistoryID string    `json:"historyID"`
+}
+
+func (r LaunchAction) UserLaunchAction(req UserLaunchActionRequest) error {
+	if req.HistoryID == "" {
+		return errors.New("field HistoryID should not empty")
+	}
+	r.client.Channel.QueueBind(
+		r.receiveActionResultQueue.Name,
+		req.HistoryID,
+		ActionResultExchange.Name,
+		false,
+		nil,
+	)
+
 	// generate a temporary queue
 	temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
 	if err != nil {
@@ -455,7 +482,7 @@ func (r RPC) UserLaunchAction(req UserLaunchActionRequest) error {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w", ErrRetry).Error(), errs: []error{ErrRetry}}
 	}
 
-	body := LaunchActionRequest(req)
+	body := LaunchActionRequest{Selector: req.Selector}
 	reqByte, err := json.Marshal(body)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w: %w", ErrMarshalRequest, err).Error(), errs: []error{ErrMarshalRequest, err}}
@@ -476,10 +503,23 @@ func (r RPC) UserLaunchAction(req UserLaunchActionRequest) error {
 }
 
 type SystemLaunchActionRequest struct {
-	Selector SelectOne `json:"selector"`
+	Selector  SelectOne `json:"selector"`
+	HistoryID string    `json:"historyID"`
 }
 
-func (r RPC) SystemLaunchAction(req SystemLaunchActionRequest) error {
+func (r LaunchAction) SystemLaunchAction(req SystemLaunchActionRequest) error {
+	if req.HistoryID == "" {
+		return errors.New("field HistoryID should not empty")
+	}
+
+	r.client.Channel.QueueBind(
+		r.receiveActionResultQueue.Name,
+		req.HistoryID,
+		ActionResultExchange.Name,
+		false,
+		nil,
+	)
+
 	launchActionQueue, err := r.client.DeclareQueueLaunchAction()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w", err).Error(), errs: []error{err}}
@@ -489,7 +529,7 @@ func (r RPC) SystemLaunchAction(req SystemLaunchActionRequest) error {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w", ErrRetry).Error(), errs: []error{ErrRetry}}
 	}
 
-	body := LaunchActionRequest(req)
+	body := LaunchActionRequest{Selector: req.Selector}
 	reqByte, err := json.Marshal(body)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w: %w", ErrMarshalRequest, err).Error(), errs: []error{ErrMarshalRequest, err}}

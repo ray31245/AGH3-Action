@@ -29,6 +29,9 @@ type ActionSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// identify the action is from same history
+	HistoryID string `json:"historyID"`
+
 	// Specifies the image of worker that will be created when executing a Action.
 	Image string `json:"image"`
 	// Specifies the args of worker that will be created when executing a Action.

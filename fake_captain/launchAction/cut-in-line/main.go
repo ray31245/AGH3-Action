@@ -6,6 +6,7 @@ import (
 	"time"
 
 	rabbitmqClient "github.com/Leukocyte-Lab/AGH3-Action/pkg/rabbitmq_client"
+	"github.com/rabbitmq/amqp091-go"
 )
 
 func failOnError(err error, msg string) {
@@ -33,7 +34,7 @@ func main() {
 	})
 	failOnError(err, "Failed to create action")
 
-	err = client.RPC().SystemLaunchAction(rabbitmqClient.SystemLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: action.Name}})
+	err = client.RPC().LaunchAction(amqp091.Queue{}).SystemLaunchAction(rabbitmqClient.SystemLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: action.Name}})
 	log.Println(err)
 	log.Printf("Success launch action: %t", err == nil)
 
@@ -52,7 +53,7 @@ func main() {
 	}
 	time.Sleep(time.Second * 5)
 	for _, v := range actionList {
-		err = client.RPC().SystemLaunchAction(rabbitmqClient.SystemLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: v.Name}})
+		err = client.RPC().LaunchAction(amqp091.Queue{}).SystemLaunchAction(rabbitmqClient.SystemLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: v.Name}})
 		log.Println(err)
 		log.Printf("Success launch action: %t", err == nil)
 	}
@@ -65,7 +66,7 @@ func main() {
 
 	time.Sleep(time.Second * 5)
 
-	err = client.RPC().UserLaunchAction(rabbitmqClient.UserLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: userLaunchAction.Name}})
+	err = client.RPC().LaunchAction(amqp091.Queue{}).UserLaunchAction(rabbitmqClient.UserLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: userLaunchAction.Name}})
 	log.Println(err)
 	log.Printf("Success launch action: %t", err == nil)
 
