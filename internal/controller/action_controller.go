@@ -300,10 +300,18 @@ func (r *ActionReconciler) UpdateAction(action *actionv1.Action) error {
 func (r *ActionReconciler) GetRunningActionCount() (int, error) {
 	// var ownPod corev1.PodList
 	var runningActions actionv1.ActionList
-	if err := r.List(context.Background(), &runningActions, client.MatchingFields{actionActiveStatusKey: string(actionv1.ActiveStatusRuning)}); err != nil {
+	if err := r.List(context.Background(), &runningActions, client.MatchingFields{activeStatusKey: string(actionv1.ActiveStatusRuning)}); err != nil {
 		return 0, fmt.Errorf("ActionReconciler.GetRunningAction: %w", err)
 	}
 	return len(runningActions.Items), nil
+}
+
+func (r *ActionReconciler) GetActionsByHistoryID(historyID string) ([]actionv1.Action, error) {
+	var actionList actionv1.ActionList
+	if err := r.List(context.Background(), &actionList, client.MatchingFields{historyIDKey: historyID}); err != nil {
+		return nil, fmt.Errorf("ActionReconciler.GetActionsByHistoryID: %w", err)
+	}
+	return actionList.Items, nil
 }
 
 type lifecycleHook struct {
@@ -324,9 +332,10 @@ func (h *HookRegister) OnFinish(f func(actionv1.Action)) {
 }
 
 var (
-	jobOwnerKey           = ".metadata.controller"
-	actionActiveStatusKey = "status.activeStatus"
-	apiGVStr              = actionv1.GroupVersion.String()
+	jobOwnerKey     = ".metadata.controller"
+	activeStatusKey = "status.activeStatus"
+	historyIDKey    = "spec.historyID"
+	apiGVStr        = actionv1.GroupVersion.String()
 )
 
 // SetupWithManager sets up the controller with the Manager.
@@ -365,9 +374,15 @@ func (r *ActionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}); err != nil {
 		return err
 	}
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &actionv1.Action{}, actionActiveStatusKey, func(rawObj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &actionv1.Action{}, activeStatusKey, func(rawObj client.Object) []string {
 		action := rawObj.(*actionv1.Action)
 		return []string{string(action.Status.ActiveStatus)}
+	}); err != nil {
+		return err
+	}
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &actionv1.Action{}, historyIDKey, func(rawObj client.Object) []string {
+		action := rawObj.(*actionv1.Action)
+		return []string{string(action.Spec.HistoryID)}
 	}); err != nil {
 		return err
 	}

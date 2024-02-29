@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"log"
+	"strconv"
+	"time"
 
 	rabbitmqClient "github.com/Leukocyte-Lab/AGH3-Action/pkg/rabbitmq_client"
 )
@@ -33,14 +35,28 @@ func main() {
 	result, receiveActionResultQueue, err := client.ListenOnActionResult(ctx)
 	failOnError(err, "Failed to start ListenOnActionResult")
 
-	err = client.RPC().CreateAction(rabbitmqClient.CreateActionRequest{
-		Action: action,
-	})
-	failOnError(err, "Failed to create action")
+	time.Sleep(time.Second * 3)
 
-	err = client.RPC().LaunchAction(receiveActionResultQueue).UserLaunchAction(rabbitmqClient.UserLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: action.Name}, HistoryID: action.HistoryID})
-	log.Println(err)
-	log.Printf("Success launch action: %t", err == nil)
+	actionList := []rabbitmqClient.ActionModel{}
+	for i := 0; i < 50; i++ {
+		a := action
+		a.Name += strconv.Itoa(i)
+		actionList = append(actionList, a)
+	}
+
+	for _, a := range actionList {
+		err = client.RPC().CreateAction(rabbitmqClient.CreateActionRequest{
+			Action: a,
+		})
+		failOnError(err, "Failed to create action")
+	}
+	time.Sleep(time.Second * 3)
+
+	for _, a := range actionList {
+		err = client.RPC().LaunchAction(receiveActionResultQueue).UserLaunchAction(rabbitmqClient.UserLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: a.Name}, HistoryID: a.HistoryID})
+		log.Println(err)
+		log.Printf("Success launch action: %t", err == nil)
+	}
 
 	for v := range result {
 		log.Println(v)

@@ -173,12 +173,13 @@ func (client RabbitmqClient) ConsumerTemporaryQueueRpcActionOperate(q amqp.Queue
 type operate string
 
 const (
-	OperateCreate   operate = "createAction"
-	OperateGet      operate = "getAction"
-	OperateWatchLog operate = "watchActionLog"
-	OperateUpdate   operate = "updateAction"
-	OperateDelete   operate = "deleteAction"
-	OperateStop     operate = "stopAction"
+	OperateCreate         operate = "createAction"
+	OperateGet            operate = "getAction"
+	OperateGetByHistoryID operate = "getActionByHistoryID"
+	OperateWatchLog       operate = "watchActionLog"
+	OperateUpdate         operate = "updateAction"
+	OperateDelete         operate = "deleteAction"
+	OperateStop           operate = "stopAction"
 )
 
 type ActionStatus string
@@ -225,6 +226,14 @@ type GetActionReqContent struct {
 type GetActionResContent struct {
 	Action ActionModel  `json:"action"`
 	Status ActionStatus `json:"status"`
+}
+
+type GetActionByHistoryReqContent struct {
+	HistoryID string `json:"historyID"`
+}
+
+type GetActionByHistoryResContent struct {
+	ActionList []GetActionResContent `json:"actionList"`
 }
 
 type UpdateActionReqContent struct {

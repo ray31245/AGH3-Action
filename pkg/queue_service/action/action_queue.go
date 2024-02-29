@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
@@ -37,6 +36,7 @@ var (
 type ActionControllerInterface interface {
 	CreateAction(*actionv1.Action) error
 	GetAction(name string, nameSpace string) (*actionv1.Action, error)
+	GetActionsByHistoryID(historyID string) ([]actionv1.Action, error)
 	DeleteAction(*actionv1.Action) error
 	UpdateAction(action *actionv1.Action) error
 	GetRunningActionCount() (int, error)
@@ -125,6 +125,8 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 					service.stopActionHandler(actMsg.Content, d)
 				case rabbitmqClient.OperateWatchLog:
 					service.watchActionLogHandler(actMsg.Content, d)
+				case rabbitmqClient.OperateGetByHistoryID:
+					service.getActionByHistoryIDHandler(actMsg.Content, d)
 				default:
 					service.client.ResponseErrorMessage(d,
 						fmt.Errorf("RabbitmqService: %w", rabbitmqClient.ErrOperateNotSupport).Error(),
@@ -208,7 +210,6 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 			if launchMsg.Selector.NameSpace == "" {
 				launchMsg.Selector.NameSpace = "default"
 			}
-			log.Println(launchMsg.Selector.Name, launchMsg.Selector.NameSpace)
 			action, err := service.ac.GetAction(launchMsg.Selector.Name, launchMsg.Selector.NameSpace)
 			if err != nil {
 				if d.ReplyTo != "" {
@@ -281,8 +282,6 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 			service.logger.Error(err, "failed to Marshal ActionResult")
 			return
 		}
-		log.Println(a.Name)
-		log.Println(a.Spec.HistoryID)
 		err = client.Channel.PublishWithContext(
 			context.Background(),
 			rabbitmqClient.ActionResultExchange.Name,
@@ -299,7 +298,11 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 			service.logger.Error(err, "failed to publish ActionResultMessage")
 			return
 		}
-		service.logger.V(1).Info("success publish result of action", "action", a)
+		service.logger.V(1).Info("success publish result of action", "action", struct {
+			name      string
+			namespace string
+			historyID string
+		}{name: a.Name, namespace: a.Namespace, historyID: a.Spec.HistoryID})
 	})
 
 	return nil
@@ -384,6 +387,45 @@ func (service RabbitmqService) getActionHandler(contentStr string, d amqp.Delive
 	if err != nil {
 		service.client.ResponseErrorMessage(d,
 			fmt.Errorf("RabbitmqService.getActionHandler: %w: %w", rabbitmqClient.ErrMarshalResponseContent, err).Error(),
+		)
+		return
+	}
+	service.client.ResponseMessage(d, string(res))
+}
+func (service RabbitmqService) getActionByHistoryIDHandler(contentStr string, d amqp.Delivery) {
+	content := rabbitmqClient.GetActionByHistoryReqContent{}
+	err := json.Unmarshal([]byte(contentStr), &content)
+	if err != nil {
+		service.client.ResponseErrorMessage(d,
+			fmt.Errorf("RabbitmqService.getActionByHistoryIDHandler: %w: %w", rabbitmqClient.ErrUnmarshalRequestContent, err).Error(),
+			rabbitmqClient.ErrorCodeUnmarshalRequestContent,
+		)
+		return
+	}
+	action, err := service.ac.GetActionsByHistoryID(content.HistoryID)
+	if err != nil {
+		service.client.ResponseErrorMessage(d,
+			fmt.Errorf("RabbitmqService.getActionByHistoryIDHandler: %w", err).Error(),
+		)
+		return
+	}
+	resContent := rabbitmqClient.GetActionByHistoryResContent{ActionList: []rabbitmqClient.GetActionResContent{}}
+	for _, a := range action {
+		resContent.ActionList = append(resContent.ActionList, rabbitmqClient.GetActionResContent{
+			Action: rabbitmqClient.ActionModel{
+				NameSpace: a.Namespace,
+				Name:      a.Name,
+				HistoryID: a.Spec.HistoryID,
+				Image:     a.Spec.Image,
+				Args:      a.Spec.Args,
+			},
+			Status: rabbitmqClient.ActionStatus(a.Status.ActiveStatus),
+		})
+	}
+	res, err := json.Marshal(resContent)
+	if err != nil {
+		service.client.ResponseErrorMessage(d,
+			fmt.Errorf("RabbitmqService.getActionByHistoryIDHandler: %w: %w", rabbitmqClient.ErrMarshalResponseContent, err).Error(),
 		)
 		return
 	}

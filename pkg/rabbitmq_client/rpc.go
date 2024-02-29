@@ -120,7 +120,7 @@ func (r RPC) GetAction(req GetActionRequest) (GetActionResponse, error) {
 
 	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
 	if err != nil {
-		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrCreateActionOperateRPCQueue, err).Error(), errs: []error{ErrCreateActionOperateRPCQueue, err}}
+		return res, RpcError{msg: fmt.Errorf("GetAction: %w", err).Error(), errs: []error{err}}
 	}
 
 	if rpc_queue.Messages > ActionOperateRPCQueueLimit {
@@ -163,6 +163,75 @@ func (r RPC) GetAction(req GetActionRequest) (GetActionResponse, error) {
 	return res, nil
 }
 
+type GetActionByHistoryIDRequest struct {
+	HistoryID string `json:"historyID"`
+}
+
+type GetActionByHistoryIDResponse struct {
+	ActionsList []GetActionResponse `json:"actionList"`
+}
+
+func (r RPC) GetActionByHistoryID(req GetActionByHistoryIDRequest) (GetActionByHistoryIDResponse, error) {
+	res := GetActionByHistoryIDResponse{}
+	// generate a temporary queue
+	temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
+	if err != nil {
+		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
+	}
+
+	msgs, err := r.client.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
+	if err != nil {
+		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrrCreateConsumer, err).Error(), errs: []error{ErrrCreateConsumer, err}}
+	}
+
+	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
+	if err != nil {
+		return res, RpcError{msg: fmt.Errorf("GetAction: %w", err).Error(), errs: []error{err}}
+	}
+
+	if rpc_queue.Messages > ActionOperateRPCQueueLimit {
+		return res, RpcError{msg: fmt.Errorf("GetAction: %w", ErrRetry).Error(), errs: []error{ErrRetry}}
+	}
+
+	content := GetActionByHistoryReqContent(req)
+	contentStr, err := json.Marshal(content)
+	if err != nil {
+		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrMarshalRequestContent, err).Error(), errs: []error{ErrMarshalRequestContent, err}}
+	}
+	body := ActionOperateMessageRequest{
+		Operate: OperateGetByHistoryID,
+		Content: string(contentStr),
+	}
+	reqByte, err := json.Marshal(body)
+	if err != nil {
+		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrMarshalRequest, err).Error(), errs: []error{ErrMarshalRequest, err}}
+	}
+
+	corrId := SeedCorrelationId()
+	err = r.client.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
+	if err != nil {
+		return res, RpcError{msg: fmt.Errorf("GetAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
+	}
+
+	resContent := GetActionByHistoryResContent{}
+	extractF := func(response ActionMessageResponse) error {
+		err := json.Unmarshal([]byte(response.Content), &resContent)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	err = r.client.ReceivesRpcActionOperate(msgs, corrId, extractF)
+	if err != nil {
+		return res, fmt.Errorf("GetAction: %w", err)
+	}
+	res = GetActionByHistoryIDResponse{ActionsList: []GetActionResponse{}}
+	for _, v := range resContent.ActionList {
+		res.ActionsList = append(res.ActionsList, GetActionResponse(v))
+	}
+	return res, nil
+}
+
 type UpdateActionRequest struct {
 	Selector SelectOne   `json:"selector"`
 	Action   ActionModel `json:"action"`
@@ -182,7 +251,7 @@ func (r RPC) UpdateAction(req UpdateActionRequest) error {
 
 	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
 	if err != nil {
-		return RpcError{msg: fmt.Errorf("UpdateAction: %w: %w", ErrCreateActionOperateRPCQueue, err).Error(), errs: []error{ErrCreateActionOperateRPCQueue, err}}
+		return RpcError{msg: fmt.Errorf("UpdateAction: %w", err).Error(), errs: []error{err}}
 	}
 
 	if rpc_queue.Messages > ActionOperateRPCQueueLimit {
@@ -235,7 +304,7 @@ func (r RPC) DeleteAction(req DeleteActionRequest) error {
 
 	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
 	if err != nil {
-		return RpcError{msg: fmt.Errorf("DeleteAction: %w: %w", ErrCreateActionOperateRPCQueue, err).Error(), errs: []error{ErrCreateActionOperateRPCQueue, err}}
+		return RpcError{msg: fmt.Errorf("DeleteAction: %w", err).Error(), errs: []error{err}}
 	}
 
 	if rpc_queue.Messages > ActionOperateRPCQueueLimit {
@@ -288,7 +357,7 @@ func (r RPC) StopAction(req DeleteActionRequest) error {
 
 	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
 	if err != nil {
-		return RpcError{msg: fmt.Errorf("StopAction: %w: %w", ErrCreateActionOperateRPCQueue, err).Error(), errs: []error{ErrCreateActionOperateRPCQueue, err}}
+		return RpcError{msg: fmt.Errorf("StopAction: %w", err).Error(), errs: []error{err}}
 	}
 
 	if rpc_queue.Messages > ActionOperateRPCQueueLimit {
@@ -348,7 +417,7 @@ func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-c
 
 		rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
 		if err != nil {
-			errCh <- RpcError{msg: fmt.Errorf("UpdateAction: %w: %w", ErrCreateActionOperateRPCQueue, err).Error(), errs: []error{ErrCreateActionOperateRPCQueue, err}}
+			errCh <- RpcError{msg: fmt.Errorf("UpdateAction: %w", err).Error(), errs: []error{err}}
 			return
 		}
 
