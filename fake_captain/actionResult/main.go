@@ -32,7 +32,7 @@ func main() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	result, receiveActionResultQueue, err := client.ListenOnActionResult(ctx)
+	result, receiveActionResultQueue, err := client.RPC().ListenOnActionResult(ctx)
 	failOnError(err, "Failed to start ListenOnActionResult")
 
 	time.Sleep(time.Second * 3)

@@ -18,8 +18,9 @@ func main() {
 	failOnError(err, "Failed to create rabbitmqClient")
 
 	action := rabbitmqClient.ActionModel{
-		Name:  "foo",
-		Image: "busybox",
+		Name:      "foo",
+		Image:     "busybox",
+		HistoryID: "aaa",
 		Args: []string{
 			"ping",
 			"127.0.0.1",
@@ -32,7 +33,7 @@ func main() {
 	})
 	failOnError(err, "Failed to create action")
 
-	err = client.RPC().LaunchAction(amqp091.Queue{}).UserLaunchAction(rabbitmqClient.UserLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: action.Name + "123"}})
+	err = client.RPC().LaunchAction(amqp091.Queue{}).UserLaunchAction(rabbitmqClient.UserLaunchActionRequest{Selector: rabbitmqClient.SelectOne{Name: action.Name}, HistoryID: action.HistoryID})
 	log.Println(err)
 	log.Printf("Success launch action: %t", err == nil)
 

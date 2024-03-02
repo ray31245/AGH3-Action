@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"strconv"
 	"time"
@@ -48,18 +49,33 @@ type CreateActionRequest struct {
 }
 
 func (r RPC) CreateAction(req CreateActionRequest) error {
+	forkClient, err := r.client.ForkClient()
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("GetActionByHistoryID: %w", err).Error(), errs: []error{err}}
+	}
+	defer func() {
+		if err := forkClient.Channel.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	// generate a temporary queue
-	temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
+	temporaryQueue, err := forkClient.DeclareTemporaryQueueRpcActionOperate()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("CreateAction: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
 	}
+	defer func() {
+		if _, err := forkClient.Channel.QueueDelete(temporaryQueue.Name, false, true, false); err != nil {
+			log.Println(err)
+		}
+	}()
 
-	msgs, err := r.client.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
+	msgs, err := forkClient.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("CreateAction: %w: %w", ErrrCreateConsumer, err).Error(), errs: []error{ErrrCreateConsumer, err}}
 	}
 
-	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
+	rpc_queue, err := forkClient.DeclareQueueRpcActionOperate()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("CreateAction: %w: %w", ErrCreateActionOperateRPCQueue, err).Error(), errs: []error{ErrCreateActionOperateRPCQueue, err}}
 	}
@@ -83,13 +99,13 @@ func (r RPC) CreateAction(req CreateActionRequest) error {
 	}
 
 	corrId := SeedCorrelationId()
-	err = r.client.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
+	err = forkClient.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("CreateAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
 	}
 
 	extractF := func(response ActionMessageResponse) error { return nil }
-	err = r.client.ReceivesRpcActionOperate(msgs, corrId, extractF)
+	err = forkClient.ReceivesRpcActionOperate(msgs, corrId, extractF)
 	if err != nil {
 		return fmt.Errorf("CreateAction: %w", err)
 	}
@@ -107,18 +123,33 @@ type GetActionResponse struct {
 
 func (r RPC) GetAction(req GetActionRequest) (GetActionResponse, error) {
 	res := GetActionResponse{}
+	forkClient, err := r.client.ForkClient()
+	if err != nil {
+		return res, RpcError{msg: fmt.Errorf("GetActionByHistoryID: %w", err).Error(), errs: []error{err}}
+	}
+	defer func() {
+		if err := forkClient.Channel.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	// generate a temporary queue
-	temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
+	temporaryQueue, err := forkClient.DeclareTemporaryQueueRpcActionOperate()
 	if err != nil {
 		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
 	}
+	defer func() {
+		if _, err := forkClient.Channel.QueueDelete(temporaryQueue.Name, false, true, false); err != nil {
+			log.Println(err)
+		}
+	}()
 
-	msgs, err := r.client.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
+	msgs, err := forkClient.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
 	if err != nil {
 		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrrCreateConsumer, err).Error(), errs: []error{ErrrCreateConsumer, err}}
 	}
 
-	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
+	rpc_queue, err := forkClient.DeclareQueueRpcActionOperate()
 	if err != nil {
 		return res, RpcError{msg: fmt.Errorf("GetAction: %w", err).Error(), errs: []error{err}}
 	}
@@ -142,7 +173,7 @@ func (r RPC) GetAction(req GetActionRequest) (GetActionResponse, error) {
 	}
 
 	corrId := SeedCorrelationId()
-	err = r.client.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
+	err = forkClient.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
 	if err != nil {
 		return res, RpcError{msg: fmt.Errorf("GetAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
 	}
@@ -155,7 +186,7 @@ func (r RPC) GetAction(req GetActionRequest) (GetActionResponse, error) {
 		}
 		return nil
 	}
-	err = r.client.ReceivesRpcActionOperate(msgs, corrId, extractF)
+	err = forkClient.ReceivesRpcActionOperate(msgs, corrId, extractF)
 	if err != nil {
 		return res, fmt.Errorf("GetAction: %w", err)
 	}
@@ -173,30 +204,45 @@ type GetActionByHistoryIDResponse struct {
 
 func (r RPC) GetActionByHistoryID(req GetActionByHistoryIDRequest) (GetActionByHistoryIDResponse, error) {
 	res := GetActionByHistoryIDResponse{}
+	forkClient, err := r.client.ForkClient()
+	if err != nil {
+		return res, RpcError{msg: fmt.Errorf("GetActionByHistoryID: %w", err).Error(), errs: []error{err}}
+	}
+	defer func() {
+		if err := forkClient.Channel.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	// generate a temporary queue
-	temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
+	temporaryQueue, err := forkClient.DeclareTemporaryQueueRpcActionOperate()
 	if err != nil {
-		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
+		return res, RpcError{msg: fmt.Errorf("GetActionByHistoryID: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
+	}
+	defer func() {
+		if _, err := forkClient.Channel.QueueDelete(temporaryQueue.Name, false, true, false); err != nil {
+			log.Println(err)
+		}
+	}()
+
+	msgs, err := forkClient.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
+	if err != nil {
+		return res, RpcError{msg: fmt.Errorf("GetActionByHistoryID: %w: %w", ErrrCreateConsumer, err).Error(), errs: []error{ErrrCreateConsumer, err}}
 	}
 
-	msgs, err := r.client.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
+	rpc_queue, err := forkClient.DeclareQueueRpcActionOperate()
 	if err != nil {
-		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrrCreateConsumer, err).Error(), errs: []error{ErrrCreateConsumer, err}}
-	}
-
-	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
-	if err != nil {
-		return res, RpcError{msg: fmt.Errorf("GetAction: %w", err).Error(), errs: []error{err}}
+		return res, RpcError{msg: fmt.Errorf("GetActionByHistoryID: %w", err).Error(), errs: []error{err}}
 	}
 
 	if rpc_queue.Messages > ActionOperateRPCQueueLimit {
-		return res, RpcError{msg: fmt.Errorf("GetAction: %w", ErrRetry).Error(), errs: []error{ErrRetry}}
+		return res, RpcError{msg: fmt.Errorf("GetActionByHistoryID: %w", ErrRetry).Error(), errs: []error{ErrRetry}}
 	}
 
 	content := GetActionByHistoryReqContent(req)
 	contentStr, err := json.Marshal(content)
 	if err != nil {
-		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrMarshalRequestContent, err).Error(), errs: []error{ErrMarshalRequestContent, err}}
+		return res, RpcError{msg: fmt.Errorf("GetActionByHistoryID: %w: %w", ErrMarshalRequestContent, err).Error(), errs: []error{ErrMarshalRequestContent, err}}
 	}
 	body := ActionOperateMessageRequest{
 		Operate: OperateGetByHistoryID,
@@ -204,13 +250,13 @@ func (r RPC) GetActionByHistoryID(req GetActionByHistoryIDRequest) (GetActionByH
 	}
 	reqByte, err := json.Marshal(body)
 	if err != nil {
-		return res, RpcError{msg: fmt.Errorf("GetAction: %w: %w", ErrMarshalRequest, err).Error(), errs: []error{ErrMarshalRequest, err}}
+		return res, RpcError{msg: fmt.Errorf("GetActionByHistoryID: %w: %w", ErrMarshalRequest, err).Error(), errs: []error{ErrMarshalRequest, err}}
 	}
 
 	corrId := SeedCorrelationId()
-	err = r.client.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
+	err = forkClient.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
 	if err != nil {
-		return res, RpcError{msg: fmt.Errorf("GetAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
+		return res, RpcError{msg: fmt.Errorf("GetActionByHistoryID: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
 	}
 
 	resContent := GetActionByHistoryResContent{}
@@ -221,9 +267,9 @@ func (r RPC) GetActionByHistoryID(req GetActionByHistoryIDRequest) (GetActionByH
 		}
 		return nil
 	}
-	err = r.client.ReceivesRpcActionOperate(msgs, corrId, extractF)
+	err = forkClient.ReceivesRpcActionOperate(msgs, corrId, extractF)
 	if err != nil {
-		return res, fmt.Errorf("GetAction: %w", err)
+		return res, fmt.Errorf("GetActionByHistoryID: %w", err)
 	}
 	res = GetActionByHistoryIDResponse{ActionsList: []GetActionResponse{}}
 	for _, v := range resContent.ActionList {
@@ -238,18 +284,32 @@ type UpdateActionRequest struct {
 }
 
 func (r RPC) UpdateAction(req UpdateActionRequest) error {
+	forkClient, err := r.client.ForkClient()
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("UpdateAction: %w", err).Error(), errs: []error{err}}
+	}
+	defer func() {
+		if err := forkClient.Channel.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
 	// generate a temporary queue
-	temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
+	temporaryQueue, err := forkClient.DeclareTemporaryQueueRpcActionOperate()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UpdateAction: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
 	}
+	defer func() {
+		if _, err := forkClient.Channel.QueueDelete(temporaryQueue.Name, false, true, false); err != nil {
+			log.Println(err)
+		}
+	}()
 
-	msgs, err := r.client.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
+	msgs, err := forkClient.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UpdateAction: %w: %w", ErrrCreateConsumer, err).Error(), errs: []error{ErrrCreateConsumer, err}}
 	}
 
-	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
+	rpc_queue, err := forkClient.DeclareQueueRpcActionOperate()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UpdateAction: %w", err).Error(), errs: []error{err}}
 	}
@@ -273,13 +333,13 @@ func (r RPC) UpdateAction(req UpdateActionRequest) error {
 	}
 
 	corrId := SeedCorrelationId()
-	err = r.client.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
+	err = forkClient.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UpdateAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
 	}
 
 	extractF := func(response ActionMessageResponse) error { return nil }
-	err = r.client.ReceivesRpcActionOperate(msgs, corrId, extractF)
+	err = forkClient.ReceivesRpcActionOperate(msgs, corrId, extractF)
 	if err != nil {
 		return fmt.Errorf("UpdateAction: %w", err)
 	}
@@ -291,18 +351,33 @@ type DeleteActionRequest struct {
 }
 
 func (r RPC) DeleteAction(req DeleteActionRequest) error {
+	forkClient, err := r.client.ForkClient()
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("DeleteAction: %w", err).Error(), errs: []error{err}}
+	}
+	defer func() {
+		if err := forkClient.Channel.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	// generate a temporary queue
-	temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
+	temporaryQueue, err := forkClient.DeclareTemporaryQueueRpcActionOperate()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("DeleteAction: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
 	}
+	defer func() {
+		if _, err := forkClient.Channel.QueueDelete(temporaryQueue.Name, false, true, false); err != nil {
+			log.Println(err)
+		}
+	}()
 
-	msgs, err := r.client.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
+	msgs, err := forkClient.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("DeleteAction: %w: %w", ErrrCreateConsumer, err).Error(), errs: []error{ErrrCreateConsumer, err}}
 	}
 
-	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
+	rpc_queue, err := forkClient.DeclareQueueRpcActionOperate()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("DeleteAction: %w", err).Error(), errs: []error{err}}
 	}
@@ -326,13 +401,13 @@ func (r RPC) DeleteAction(req DeleteActionRequest) error {
 	}
 
 	corrId := SeedCorrelationId()
-	err = r.client.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
+	err = forkClient.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("DeleteAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
 	}
 
 	extractF := func(response ActionMessageResponse) error { return nil }
-	err = r.client.ReceivesRpcActionOperate(msgs, corrId, extractF)
+	err = forkClient.ReceivesRpcActionOperate(msgs, corrId, extractF)
 	if err != nil {
 		return fmt.Errorf("DeleteAction: %w", err)
 	}
@@ -343,19 +418,34 @@ type StopActionRequest struct {
 	Selector SelectOne `json:"selector"`
 }
 
-func (r RPC) StopAction(req DeleteActionRequest) error {
+func (r RPC) StopAction(req StopActionRequest) error {
+	forkClient, err := r.client.ForkClient()
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("StopAction: %w", err).Error(), errs: []error{err}}
+	}
+	defer func() {
+		if err := forkClient.Channel.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
 	// generate a temporary queue
-	temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
+	temporaryQueue, err := forkClient.DeclareTemporaryQueueRpcActionOperate()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("StopAction: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
 	}
+	defer func() {
+		if _, err := forkClient.Channel.QueueDelete(temporaryQueue.Name, false, true, false); err != nil {
+			log.Println(err)
+		}
+	}()
 
-	msgs, err := r.client.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
+	msgs, err := forkClient.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("StopAction: %w: %w", ErrrCreateConsumer, err).Error(), errs: []error{ErrrCreateConsumer, err}}
 	}
 
-	rpc_queue, err := r.client.DeclareQueueRpcActionOperate()
+	rpc_queue, err := forkClient.DeclareQueueRpcActionOperate()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("StopAction: %w", err).Error(), errs: []error{err}}
 	}
@@ -379,13 +469,13 @@ func (r RPC) StopAction(req DeleteActionRequest) error {
 	}
 
 	corrId := SeedCorrelationId()
-	err = r.client.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
+	err = forkClient.RequestRpcActionOperate(rpc_queue, temporaryQueue, corrId, reqByte)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("StopAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
 	}
 
 	extractF := func(response ActionMessageResponse) error { return nil }
-	err = r.client.ReceivesRpcActionOperate(msgs, corrId, extractF)
+	err = forkClient.ReceivesRpcActionOperate(msgs, corrId, extractF)
 	if err != nil {
 		return fmt.Errorf("StopAction: %w", err)
 	}
@@ -402,12 +492,28 @@ func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-c
 	errCh := make(chan error, 2)
 	logCh := make(chan WatchActionLogResponse)
 	go func() {
+		forkClient, err := r.client.ForkClient()
+		if err != nil {
+			errCh <- RpcError{msg: fmt.Errorf("StopAction: %w", err).Error(), errs: []error{err}}
+			return
+		}
+		defer func() {
+			if err := forkClient.Channel.Close(); err != nil {
+				log.Println(err)
+			}
+		}()
+
 		// generate a temporary queue
 		temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
 		if err != nil {
 			errCh <- RpcError{msg: fmt.Errorf("UpdateAction: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
 			return
 		}
+		defer func() {
+			if _, err := forkClient.Channel.QueueDelete(temporaryQueue.Name, false, true, false); err != nil {
+				log.Println(err)
+			}
+		}()
 
 		msgs, err := r.client.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
 		if err != nil {
@@ -502,6 +608,74 @@ func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-c
 	return logCh, nil
 }
 
+func (r RPC) ListenOnActionResult(ctx context.Context) (<-chan ActionResultMessage, amqp.Queue, error) {
+	forkClient, err := r.client.ForkClient()
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to fork client: %w", err)
+	}
+
+	err = forkClient.Channel.Qos(
+		1,
+		0,
+		false,
+	)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to bind queue: %w", err)
+	}
+
+	receiveActionResultQueue, err := forkClient.DeclareTemporaryQueueActionResult()
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to declare temporary queue: %w", err)
+	}
+
+	err = forkClient.DeclareExchangeActionResult()
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to declare exchange: %w", err)
+	}
+
+	msgs, err := forkClient.Channel.Consume(
+		receiveActionResultQueue.Name,
+		"",
+		true,
+		true,
+		false,
+		false,
+		nil,
+	)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("failed to declare consumer: %w", err)
+	}
+	res := make(chan ActionResultMessage)
+	go func() {
+		defer func() {
+			if _, err := forkClient.Channel.QueueDelete(receiveActionResultQueue.Name, false, false, true); err != nil {
+				log.Println(err)
+			}
+			if err := forkClient.Channel.Close(); err != nil {
+				log.Println(err)
+			}
+			close(res)
+		}()
+		for {
+			select {
+			case v, ok := <-msgs:
+				if !ok {
+					return
+				}
+				resultMsg := ActionResultMessage{}
+				err := json.Unmarshal(v.Body, &resultMsg)
+				if err != nil {
+					log.Println("Unmarshal message to ActionResultMessage")
+				}
+				res <- resultMsg
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return res, receiveActionResultQueue, nil
+}
+
 type LaunchAction struct {
 	client                   RabbitmqClient
 	receiveActionResultQueue amqp.Queue
@@ -523,26 +697,44 @@ func (r LaunchAction) UserLaunchAction(req UserLaunchActionRequest) error {
 	if req.HistoryID == "" {
 		return errors.New("field HistoryID should not empty")
 	}
-	r.client.Channel.QueueBind(
+	forkClient, err := r.client.ForkClient()
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w", err).Error(), errs: []error{err}}
+	}
+	defer func() {
+		if err := forkClient.Channel.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
+	err = forkClient.Channel.QueueBind(
 		r.receiveActionResultQueue.Name,
 		req.HistoryID,
 		ActionResultExchange.Name,
 		false,
 		nil,
 	)
+	if err != nil {
+		return fmt.Errorf("UserLaunchAction: %w", err)
+	}
 
 	// generate a temporary queue
-	temporaryQueue, err := r.client.DeclareTemporaryQueueRpcActionOperate()
+	temporaryQueue, err := forkClient.DeclareTemporaryQueueRpcActionOperate()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w: %w", ErrCreateTemporaryQueue, err).Error(), errs: []error{ErrCreateTemporaryQueue, err}}
 	}
+	defer func() {
+		if _, err := forkClient.Channel.QueueDelete(temporaryQueue.Name, false, true, false); err != nil {
+			log.Println(err)
+		}
+	}()
 
-	msgs, err := r.client.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
+	msgs, err := forkClient.ConsumerTemporaryQueueRpcActionOperate(temporaryQueue)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w: %w", ErrrCreateConsumer, err).Error(), errs: []error{ErrrCreateConsumer, err}}
 	}
 
-	launchActionQueue, err := r.client.DeclareQueueLaunchAction()
+	launchActionQueue, err := forkClient.DeclareQueueLaunchAction()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w", err).Error(), errs: []error{err}}
 	}
@@ -558,13 +750,13 @@ func (r LaunchAction) UserLaunchAction(req UserLaunchActionRequest) error {
 	}
 
 	corrId := SeedCorrelationId()
-	err = r.client.RequestLaunchActionByUser(launchActionQueue, temporaryQueue, corrId, reqByte)
+	err = forkClient.RequestLaunchActionByUser(launchActionQueue, temporaryQueue, corrId, reqByte)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
 	}
 
 	extractF := func(response ActionMessageResponse) error { return nil }
-	err = r.client.ReceivesRpcActionOperate(msgs, corrId, extractF)
+	err = forkClient.ReceivesRpcActionOperate(msgs, corrId, extractF)
 	if err != nil {
 		return fmt.Errorf("UserLaunchAction: %w", err)
 	}
@@ -581,7 +773,17 @@ func (r LaunchAction) SystemLaunchAction(req SystemLaunchActionRequest) error {
 		return errors.New("field HistoryID should not empty")
 	}
 
-	r.client.Channel.QueueBind(
+	forkClient, err := r.client.ForkClient()
+	if err != nil {
+		return RpcError{msg: fmt.Errorf("SystemLaunchAction: %w", err).Error(), errs: []error{err}}
+	}
+	defer func() {
+		if err := forkClient.Channel.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
+
+	forkClient.Channel.QueueBind(
 		r.receiveActionResultQueue.Name,
 		req.HistoryID,
 		ActionResultExchange.Name,
@@ -589,7 +791,7 @@ func (r LaunchAction) SystemLaunchAction(req SystemLaunchActionRequest) error {
 		nil,
 	)
 
-	launchActionQueue, err := r.client.DeclareQueueLaunchAction()
+	launchActionQueue, err := forkClient.DeclareQueueLaunchAction()
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w", err).Error(), errs: []error{err}}
 	}
@@ -604,7 +806,7 @@ func (r LaunchAction) SystemLaunchAction(req SystemLaunchActionRequest) error {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %w: %w", ErrMarshalRequest, err).Error(), errs: []error{ErrMarshalRequest, err}}
 	}
 
-	err = r.client.RequestLaunchActionBySystem(launchActionQueue, reqByte)
+	err = forkClient.RequestLaunchActionBySystem(launchActionQueue, reqByte)
 	if err != nil {
 		return RpcError{msg: fmt.Errorf("UserLaunchAction: %s: %s", ErrPublishMessage, err).Error(), errs: []error{ErrPublishMessage, err}}
 	}

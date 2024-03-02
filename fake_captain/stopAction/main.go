@@ -35,7 +35,7 @@ func main() {
 	// err = client.RPC().DeleteAction(rabbitmqClient.DeleteActionRequest{Selector: rabbitmqClient.SelectOne{Name: "notfound"}})
 	// log.Printf("delete a not exist action, get error notfound: %t", errors.Is(err, rabbitmqClient.ErrActionNotfound))
 
-	err = client.RPC().StopAction(rabbitmqClient.DeleteActionRequest{Selector: rabbitmqClient.SelectOne{Name: action.Name}})
+	err = client.RPC().StopAction(rabbitmqClient.StopActionRequest{Selector: rabbitmqClient.SelectOne{Name: action.Name}})
 	log.Println(err)
 	log.Printf("Success stop action: %t", err == nil)
 }

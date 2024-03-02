@@ -50,13 +50,21 @@ func New(url string) (RabbitmqClient, error) {
 	if err != nil {
 		return RabbitmqClient{}, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}
-	gracefulShutdown(func() { err := conn.Close(); log.Println(err) })
+	gracefulShutdown(func() {
+		if err := conn.Close(); err != nil {
+			log.Println(err)
+		}
+	})
 
 	ch, err := conn.Channel()
 	if err != nil {
 		return RabbitmqClient{}, fmt.Errorf("failed to open a channel: %w", err)
 	}
-	gracefulShutdown(func() { err := ch.Close(); log.Println(err) })
+	gracefulShutdown(func() {
+		if err := ch.Close(); err != nil {
+			log.Println(err)
+		}
+	})
 
 	return RabbitmqClient{conn: conn, Channel: ch}, nil
 }
@@ -149,7 +157,7 @@ func (client RabbitmqClient) DeclareTemporaryQueueActionResult() (amqp.Queue, er
 		nil,   // arguments
 	)
 	if err != nil {
-		return amqp.Queue{}, fmt.Errorf("DeclareTemporaryQueueRpcActionOperate: %w", err)
+		return amqp.Queue{}, fmt.Errorf("DeclareTemporaryQueueActionResult: %w", err)
 	}
 	return q, nil
 }
@@ -434,65 +442,4 @@ func (client RabbitmqClient) ReceivesRpcActionOperate(msgs <-chan amqp.Delivery,
 			return RpcError{msg: fmt.Errorf("RabbitmqClient.ReceivesRpcActionOperate: %s and %s", ErrRetry, ErrRequestTimeout).Error(), errs: []error{ErrRetry, ErrRequestTimeout}}
 		}
 	}
-}
-
-func (client RabbitmqClient) ListenOnActionResult(ctx context.Context) (<-chan ActionResultMessage, amqp.Queue, error) {
-	forkClient, err := client.ForkClient()
-	if err != nil {
-		return nil, amqp.Queue{}, fmt.Errorf("failed to fork client: %w", err)
-	}
-
-	err = forkClient.Channel.Qos(
-		1,
-		0,
-		false,
-	)
-	if err != nil {
-		return nil, amqp.Queue{}, fmt.Errorf("failed to bind queue: %w", err)
-	}
-
-	receiveActionResultQueue, err := forkClient.DeclareTemporaryQueueActionResult()
-	if err != nil {
-		return nil, amqp.Queue{}, fmt.Errorf("failed to declare temporary queue: %w", err)
-	}
-
-	err = forkClient.DeclareExchangeActionResult()
-	if err != nil {
-		return nil, amqp.Queue{}, fmt.Errorf("failed to declare exchange: %w", err)
-	}
-
-	msgs, err := client.Channel.Consume(
-		receiveActionResultQueue.Name,
-		"",
-		true,
-		true,
-		false,
-		false,
-		nil,
-	)
-	if err != nil {
-		return nil, amqp.Queue{}, fmt.Errorf("failed to declare consumer: %w", err)
-	}
-	res := make(chan ActionResultMessage)
-	go func() {
-		for {
-			select {
-			case v, ok := <-msgs:
-				if !ok {
-					close(res)
-					return
-				}
-				resultMsg := ActionResultMessage{}
-				err := json.Unmarshal(v.Body, &resultMsg)
-				if err != nil {
-					log.Println("Unmarshal message to ActionResultMessage")
-				}
-				res <- resultMsg
-			case <-ctx.Done():
-				close(res)
-				return
-			}
-		}
-	}()
-	return res, receiveActionResultQueue, nil
 }
