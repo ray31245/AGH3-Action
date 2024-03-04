@@ -18,12 +18,26 @@ func main() {
 	client, err := rabbitmqClient.New("amqp://guest:guest@localhost:5672/")
 	failOnError(err, "Failed to create rabbitmqClient")
 
+	action := rabbitmqClient.ActionModel{
+		Name:      "foo",
+		HistoryID: "aaa",
+		Image:     "busybox",
+		Args: []string{
+			"ping",
+			"127.0.0.1",
+			"-c",
+			"60",
+		},
+	}
 	action1 := rabbitmqClient.ActionModel{
 		Name:      "foo1",
 		HistoryID: "aaa",
 		Image:     "busybox",
 		Args: []string{
-			"env",
+			"ping",
+			"127.0.0.1",
+			"-c",
+			"60",
 		},
 	}
 	action2 := rabbitmqClient.ActionModel{
@@ -79,6 +93,11 @@ func main() {
 	time.Sleep(time.Second * 3)
 
 	err = client.RPC().CreateAction(rabbitmqClient.CreateActionRequest{
+		Action: action,
+	})
+	failOnError(err, "Failed to create action")
+
+	err = client.RPC().CreateAction(rabbitmqClient.CreateActionRequest{
 		Action: action1,
 	})
 	failOnError(err, "Failed to create action")
@@ -106,6 +125,14 @@ func main() {
 	time.Sleep(time.Second * 3)
 
 	launchClient := client.RPC().LaunchAction(receiveActionResultQueue)
+
+	err = launchClient.UserLaunchAction(
+		rabbitmqClient.UserLaunchActionRequest{
+			Selector:  rabbitmqClient.SelectOne{Name: action.Name},
+			HistoryID: action.HistoryID,
+		},
+	)
+	log.Printf("Success launch action %s: %t", action.Name, err == nil)
 
 	err = launchClient.UserLaunchAction(
 		rabbitmqClient.UserLaunchActionRequest{

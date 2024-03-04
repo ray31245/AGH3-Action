@@ -53,7 +53,7 @@ type ActionStatus struct {
 
 	// Pointers to currently running worker.
 	// +optional
-	Active corev1.ObjectReference `json:"active,omitempty"`
+	Worker *corev1.ObjectReference `json:"worker,omitempty"`
 
 	// ActiveStatus is depended on worker's status
 	ActiveStatus ActiveStatus `json:"activeStatus"`

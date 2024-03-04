@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	ref "k8s.io/client-go/tools/reference"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -114,7 +116,17 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// update action's status
 	targetActiveStatus := actionv1.ActiveStatusPending
+	if action.Status.ActiveStatus != "" {
+		targetActiveStatus = action.Status.ActiveStatus
+	}
+	WorkerRef := (*corev1.ObjectReference)(nil)
 	if lastWorker != nil {
+		if worker, err := ref.GetReference(r.Scheme, lastWorker); err != nil {
+			log.Error(err, "unable to make reference to worker")
+		} else {
+			WorkerRef = worker
+		}
+
 		_, finishType := isWorkerFinished(lastWorker)
 		switch finishType {
 		case "":
@@ -135,6 +147,7 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				return err
 			}
 			action.Status.ActiveStatus = targetActiveStatus
+			action.Status.Worker = WorkerRef
 			return r.Status().Update(ctx, &action)
 		})
 		if err != nil {
@@ -172,7 +185,8 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	contructWorkerForAction := func(action *actionv1.Action) (*batchv1.Job, error) {
 		backoffLimit := int32(0)
-		ttltime := int32(3600)
+		ttlTime := int32(3600)
+		actimeTime := int64(10800)
 		worker := &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels:      make(map[string]string),
@@ -182,7 +196,8 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			},
 			Spec: batchv1.JobSpec{
 				BackoffLimit:            &backoffLimit,
-				TTLSecondsAfterFinished: &ttltime,
+				TTLSecondsAfterFinished: &ttlTime,
+				ActiveDeadlineSeconds:   &actimeTime,
 				Template: corev1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: action.Name,
@@ -284,6 +299,21 @@ func (r *ActionReconciler) GetAction(name string, nameSpace string) (*actionv1.A
 	return &action, nil
 }
 
+func (r *ActionReconciler) GetPodByAction(action *actionv1.Action) (*corev1.Pod, error) {
+	if action.Status.Worker == nil {
+		return nil, errors.New("this action does not have worker")
+	}
+	worker := action.Status.Worker
+	childPods := corev1.PodList{}
+	if err := r.List(context.Background(), &childPods, client.InNamespace(worker.Namespace), client.MatchingFields{jobOwnerKey: worker.Name}); err != nil {
+		return nil, fmt.Errorf("failed to get worker's pod: %w", err)
+	}
+	if len(childPods.Items) == 0 {
+		return nil, errors.New("this action's worker is not running")
+	}
+	return &childPods.Items[0], nil
+}
+
 func (r *ActionReconciler) DeleteAction(action *actionv1.Action) error {
 	if err := r.Delete(context.Background(), action, client.PropagationPolicy(metav1.DeletePropagationBackground)); client.IgnoreNotFound(err) != nil {
 		return fmt.Errorf("ActionReconciler.DeleteAction: %w", err)
@@ -366,6 +396,23 @@ func (r *ActionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}
 		// ...make sure it's a CronJob...
 		if owner.APIVersion != apiGVStr || owner.Kind != "Action" {
+			return nil
+		}
+
+		// ...and if so, return it
+		return []string{owner.Name}
+	}); err != nil {
+		return err
+	}
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, jobOwnerKey, func(rawObj client.Object) []string {
+		// grab the job object, extract the owner...
+		pod := rawObj.(*corev1.Pod)
+		owner := metav1.GetControllerOf(pod)
+		if owner == nil {
+			return nil
+		}
+		// ...make sure it's a CronJob...
+		if owner.APIVersion != batchv1.SchemeGroupVersion.String() || owner.Kind != "Job" {
 			return nil
 		}
 

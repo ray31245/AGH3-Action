@@ -19,7 +19,8 @@ import (
 	rabbitmqClient "github.com/Leukocyte-Lab/AGH3-Action/pkg/rabbitmq_client"
 	"github.com/go-logr/logr"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -40,6 +41,7 @@ type ActionControllerInterface interface {
 	DeleteAction(*actionv1.Action) error
 	UpdateAction(action *actionv1.Action) error
 	GetRunningActionCount() (int, error)
+	GetPodByAction(action *actionv1.Action) (*corev1.Pod, error)
 }
 
 type RegisterHook interface {
@@ -167,7 +169,6 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 			mu.TryLock()
 			mu.Unlock()
 		}
-		service.logger.V(1).Info("get numbers of running worker when finish", "number", count)
 	})
 
 	go func() {
@@ -199,7 +200,6 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 				d.Ack(false)
 				continue
 			}
-			service.logger.V(1).Info("get numbers of running worker when launch", "number", runningWorkerCount)
 			if runningWorkerCount <= RunningWorkerLimitSystem {
 				mu.TryLock()
 				mu.Unlock()
@@ -298,11 +298,6 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 			service.logger.Error(err, "failed to publish ActionResultMessage")
 			return
 		}
-		service.logger.V(1).Info("success publish result of action", "action", struct {
-			name      string
-			namespace string
-			historyID string
-		}{name: a.Name, namespace: a.Namespace, historyID: a.Spec.HistoryID})
 	})
 
 	return nil
@@ -619,9 +614,16 @@ func (service RabbitmqService) watchActionLogHandler(contentStr string, d amqp.D
 		)
 		return
 	}
+	pod, err := service.ac.GetPodByAction(action)
+	if err != nil {
+		service.client.ResponseErrorMessage(d,
+			fmt.Errorf("RabbitmqService.getActionHandler: %w", err).Error(),
+		)
+		return
+	}
 	// TODO: if needed scale controller and cancel this watch,this ctx should be contextWithCancel use a queue to receive signal
 	watchCtx := context.Background()
-	stream, err := service.k8sInterface.CoreV1().Pods(action.Namespace).GetLogs(action.Name, &v1.PodLogOptions{
+	stream, err := service.k8sInterface.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
 		Container: "main",
 		Follow:    true,
 	}).Stream(watchCtx)

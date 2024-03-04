@@ -489,9 +489,10 @@ type WatchActionLogRequest struct {
 type WatchActionLogResponse string
 
 func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-chan WatchActionLogResponse, error) {
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 20)
 	logCh := make(chan WatchActionLogResponse)
 	go func() {
+		defer close(logCh)
 		forkClient, err := r.client.ForkClient()
 		if err != nil {
 			errCh <- RpcError{msg: fmt.Errorf("StopAction: %w", err).Error(), errs: []error{err}}
@@ -559,7 +560,10 @@ func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-c
 		started := false
 		for {
 			select {
-			case d := <-msgs:
+			case d, ok := <-msgs:
+				if !ok {
+					return
+				}
 				if corrId == d.CorrelationId {
 					response := ActionMessageResponse{}
 					err := json.Unmarshal(d.Body, &response)
@@ -572,8 +576,10 @@ func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-c
 						errCh <- err
 						return
 					}
-					started = true
-					errCh <- nil
+					if !started {
+						started = true
+						errCh <- nil
+					}
 
 					res := WatchActionLogResContent{}
 					err = json.Unmarshal([]byte(response.Content), &res)
@@ -584,7 +590,6 @@ func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-c
 					if res.WatchStatus == WatchStatusSending {
 						logCh <- WatchActionLogResponse(res.Log)
 					} else if res.WatchStatus == WatchStatusClose {
-						close(logCh)
 						return
 					}
 				}
@@ -594,7 +599,6 @@ func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-c
 					return
 				}
 			case <-ctx.Done():
-				close(logCh)
 				return
 			}
 		}
