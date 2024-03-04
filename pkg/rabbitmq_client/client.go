@@ -279,8 +279,11 @@ type WatchActionLogResContent struct {
 }
 
 type ActionResultMessage struct {
-	Action ActionModel  `json:"action"`
-	Status ActionStatus `json:"status"`
+	Action        ActionModel  `json:"action"`
+	Status        ActionStatus `json:"status"`
+	Logs          string       `json:"logs"`
+	LogErrorMsg   string       `json:"logErrorMsg"`
+	LogErrorCodes []ErrorCode  `json:"logErrorCodes"`
 }
 
 type ActionMessageResponse struct {

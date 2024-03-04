@@ -71,6 +71,7 @@ func (e RpcError) Unwrap() []error {
 	return res
 }
 
+// TODO: make a map for convert ErrorCodes to Err
 func (msg ActionMessageResponse) extractError() (bool, RpcError) {
 	if len(msg.ErrorCodes) > 0 || msg.ErrorMsg != "" {
 		errs := []error{}
@@ -81,6 +82,20 @@ func (msg ActionMessageResponse) extractError() (bool, RpcError) {
 			errs = append(errs, ErrActionNotfound)
 		}
 		return true, RpcError{msg: fmt.Sprintf("ActionMessageResponse.extractError: %s", msg.ErrorMsg), errs: errs}
+	}
+	return false, RpcError{}
+}
+
+func (msg ActionResultMessage) extractGetLogError() (bool, RpcError) {
+	if len(msg.LogErrorCodes) > 0 || msg.LogErrorMsg != "" {
+		errs := []error{}
+		if slices.Contains(msg.LogErrorCodes, ErrorCodeActionAlreadyExist) {
+			errs = append(errs, ErrActionAlreadyExist)
+		}
+		if slices.Contains(msg.LogErrorCodes, ErrorCodeActionNotfound) {
+			errs = append(errs, ErrActionNotfound)
+		}
+		return true, RpcError{msg: fmt.Sprintf("ActionMessageResponse.extractError: %s", msg.LogErrorMsg), errs: errs}
 	}
 	return false, RpcError{}
 }

@@ -612,7 +612,26 @@ func (r RPC) WatchActionLog(ctx context.Context, req WatchActionLogRequest) (<-c
 	return logCh, nil
 }
 
-func (r RPC) ListenOnActionResult(ctx context.Context) (<-chan ActionResultMessage, amqp.Queue, error) {
+type ActionResult struct {
+	action ActionModel
+	status ActionStatus
+	logs   string
+	logErr error
+}
+
+func (a ActionResult) GetAction() ActionModel {
+	return a.action
+}
+
+func (a ActionResult) GetStatus() ActionStatus {
+	return a.status
+}
+
+func (a ActionResult) GetLogs() (string, error) {
+	return a.logs, a.logErr
+}
+
+func (r RPC) ListenOnActionResult(ctx context.Context) (<-chan ActionResult, amqp.Queue, error) {
 	forkClient, err := r.client.ForkClient()
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("failed to fork client: %w", err)
@@ -649,7 +668,7 @@ func (r RPC) ListenOnActionResult(ctx context.Context) (<-chan ActionResultMessa
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("failed to declare consumer: %w", err)
 	}
-	res := make(chan ActionResultMessage)
+	res := make(chan ActionResult)
 	go func() {
 		defer func() {
 			if _, err := forkClient.Channel.QueueDelete(receiveActionResultQueue.Name, false, false, true); err != nil {
@@ -671,7 +690,17 @@ func (r RPC) ListenOnActionResult(ctx context.Context) (<-chan ActionResultMessa
 				if err != nil {
 					log.Println("Unmarshal message to ActionResultMessage")
 				}
-				res <- resultMsg
+				actResult := ActionResult{
+					action: resultMsg.Action,
+					status: resultMsg.Status,
+				}
+				hasErr, err := resultMsg.extractGetLogError()
+				if hasErr {
+					actResult.logErr = err
+				} else {
+					actResult.logs = resultMsg.Logs
+				}
+				res <- actResult
 			case <-ctx.Done():
 				return
 			}

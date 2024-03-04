@@ -150,9 +150,10 @@ func main() {
 	log.Printf("Success launch action %s: %t", action2.Name, err == nil)
 
 	for v := range result {
-		log.Printf("action %s finish in status %s", v.Action.Name, v.Status)
-		if v.Status == rabbitmqClient.ActionStatusSuccessed {
-			for _, nextAction := range nextMap[v.Action.Name] {
+		log.Printf("action %s finish in status %s", v.GetAction().Name, v.GetStatus())
+		log.Println(v.GetLogs())
+		if v.GetStatus() == rabbitmqClient.ActionStatusSuccessed {
+			for _, nextAction := range nextMap[v.GetAction().Name] {
 				err = launchClient.SystemLaunchAction(
 					rabbitmqClient.SystemLaunchActionRequest{
 						Selector:  rabbitmqClient.SelectOne{Name: nextAction.Name},

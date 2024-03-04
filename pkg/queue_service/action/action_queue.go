@@ -7,6 +7,7 @@ import (
 	// "strings"
 
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -276,6 +277,23 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 				Args:      a.Spec.Args,
 			},
 			Status: rabbitmqClient.ActionStatus(a.Status.ActiveStatus),
+		}
+		pod, err := service.ac.GetPodByAction(&a)
+		if err != nil {
+			resContent.LogErrorMsg = fmt.Sprintf("failed to get action's worker: %s", err.Error())
+		} else {
+			stream, err := service.getLogsStream(context.Background(), *pod, false)
+			if err != nil {
+				resContent.LogErrorMsg = fmt.Sprintf("failed to get stream that pod's log: %s", err)
+			} else {
+				defer stream.Close()
+				buf := new(bytes.Buffer)
+				_, err = io.Copy(buf, stream)
+				if err != nil {
+					resContent.LogErrorMsg = fmt.Sprintf("failed to copy from stream: %s", err)
+				}
+				resContent.Logs = buf.String()
+			}
 		}
 		res, err := json.Marshal(resContent)
 		if err != nil {
@@ -623,10 +641,7 @@ func (service RabbitmqService) watchActionLogHandler(contentStr string, d amqp.D
 	}
 	// TODO: if needed scale controller and cancel this watch,this ctx should be contextWithCancel use a queue to receive signal
 	watchCtx := context.Background()
-	stream, err := service.k8sInterface.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
-		Container: "main",
-		Follow:    true,
-	}).Stream(watchCtx)
+	stream, err := service.getLogsStream(watchCtx, *pod, true)
 	if err != nil {
 		service.client.ResponseErrorMessage(d,
 			fmt.Errorf("RabbitmqService.getActionHandler: %w", err).Error(),
@@ -678,4 +693,15 @@ func (service RabbitmqService) watchActionLogHandler(contentStr string, d amqp.D
 			break
 		}
 	}
+}
+
+func (service RabbitmqService) getLogsStream(ctx context.Context, pod corev1.Pod, fallow bool) (io.ReadCloser, error) {
+	stream, err := service.k8sInterface.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+		Container: "main",
+		Follow:    fallow,
+	}).Stream(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("RabbitmqService.getLogsStream: %w", err)
+	}
+	return stream, nil
 }
