@@ -631,10 +631,10 @@ func (a ActionResult) GetLogs() (string, error) {
 	return a.logs, a.logErr
 }
 
-func (r RPC) ListenOnActionResult(ctx context.Context) (<-chan ActionResult, amqp.Queue, error) {
+func (r RPC) ListenOnActionResult(ctx context.Context) (<-chan ActionResult, LaunchAction, error) {
 	forkClient, err := r.client.ForkClient()
 	if err != nil {
-		return nil, amqp.Queue{}, fmt.Errorf("failed to fork client: %w", err)
+		return nil, LaunchAction{}, fmt.Errorf("failed to fork client: %w", err)
 	}
 
 	err = forkClient.Channel.Qos(
@@ -643,17 +643,17 @@ func (r RPC) ListenOnActionResult(ctx context.Context) (<-chan ActionResult, amq
 		false,
 	)
 	if err != nil {
-		return nil, amqp.Queue{}, fmt.Errorf("failed to bind queue: %w", err)
+		return nil, LaunchAction{}, fmt.Errorf("failed to bind queue: %w", err)
 	}
 
 	receiveActionResultQueue, err := forkClient.DeclareTemporaryQueueActionResult()
 	if err != nil {
-		return nil, amqp.Queue{}, fmt.Errorf("failed to declare temporary queue: %w", err)
+		return nil, LaunchAction{}, fmt.Errorf("failed to declare temporary queue: %w", err)
 	}
 
 	err = forkClient.DeclareExchangeActionResult()
 	if err != nil {
-		return nil, amqp.Queue{}, fmt.Errorf("failed to declare exchange: %w", err)
+		return nil, LaunchAction{}, fmt.Errorf("failed to declare exchange: %w", err)
 	}
 
 	msgs, err := forkClient.Channel.Consume(
@@ -666,7 +666,7 @@ func (r RPC) ListenOnActionResult(ctx context.Context) (<-chan ActionResult, amq
 		nil,
 	)
 	if err != nil {
-		return nil, amqp.Queue{}, fmt.Errorf("failed to declare consumer: %w", err)
+		return nil, LaunchAction{}, fmt.Errorf("failed to declare consumer: %w", err)
 	}
 	res := make(chan ActionResult)
 	go func() {
@@ -706,7 +706,8 @@ func (r RPC) ListenOnActionResult(ctx context.Context) (<-chan ActionResult, amq
 			}
 		}
 	}()
-	return res, receiveActionResultQueue, nil
+	launcher := r.LaunchAction(receiveActionResultQueue)
+	return res, launcher, nil
 }
 
 type LaunchAction struct {

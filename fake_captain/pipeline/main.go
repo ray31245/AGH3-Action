@@ -125,7 +125,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	result, receiveActionResultQueue, err := client.RPC().ListenOnActionResult(ctx)
+	result, Launcher, err := client.RPC().ListenOnActionResult(ctx)
 	failOnError(err, "Failed to start ListenOnActionResult")
 
 	time.Sleep(time.Second * 3)
@@ -162,9 +162,7 @@ func main() {
 
 	time.Sleep(time.Second * 3)
 
-	launchClient := client.RPC().LaunchAction(receiveActionResultQueue)
-
-	err = launchClient.UserLaunchAction(
+	err = Launcher.UserLaunchAction(
 		rabbitmqClient.UserLaunchActionRequest{
 			Selector:  rabbitmqClient.SelectOne{Name: action.Name},
 			HistoryID: action.HistoryID,
@@ -172,14 +170,14 @@ func main() {
 	)
 	log.Printf("Success launch action %s: %t", action.Name, err == nil)
 
-	err = launchClient.UserLaunchAction(
+	err = Launcher.UserLaunchAction(
 		rabbitmqClient.UserLaunchActionRequest{
 			Selector:  rabbitmqClient.SelectOne{Name: action1.Name},
 			HistoryID: action1.HistoryID,
 		},
 	)
 	log.Printf("Success launch action %s: %t", action1.Name, err == nil)
-	err = launchClient.UserLaunchAction(
+	err = Launcher.UserLaunchAction(
 		rabbitmqClient.UserLaunchActionRequest{
 			Selector:  rabbitmqClient.SelectOne{Name: action2.Name},
 			HistoryID: action2.HistoryID,
@@ -192,7 +190,7 @@ func main() {
 		log.Println(v.GetLogs())
 		if v.GetStatus() == rabbitmqClient.ActionStatusSuccessed {
 			for _, nextAction := range nextMap[v.GetAction().Name] {
-				err = launchClient.SystemLaunchAction(
+				err = Launcher.SystemLaunchAction(
 					rabbitmqClient.SystemLaunchActionRequest{
 						Selector:  rabbitmqClient.SelectOne{Name: nextAction.Name},
 						HistoryID: nextAction.HistoryID,
