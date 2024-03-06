@@ -32,8 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	actionv1 "github.com/Leukocyte-Lab/AGH3-Action/api/v1"
-	"github.com/Leukocyte-Lab/AGH3-Action/internal/controller"
+	actionv1 "github.com/ray31245/AGH3-Action/api/v1"
+	"github.com/ray31245/AGH3-Action/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 

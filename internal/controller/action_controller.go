@@ -35,9 +35,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	actionv1 "github.com/Leukocyte-Lab/AGH3-Action/api/v1"
-	HttpService "github.com/Leukocyte-Lab/AGH3-Action/pkg/http_service/action"
-	mqService "github.com/Leukocyte-Lab/AGH3-Action/pkg/queue_service/action"
+	actionv1 "github.com/ray31245/AGH3-Action/api/v1"
+	HttpService "github.com/ray31245/AGH3-Action/pkg/http_service/action"
+	mqService "github.com/ray31245/AGH3-Action/pkg/queue_service/action"
 	corev1 "k8s.io/api/core/v1"
 )
 

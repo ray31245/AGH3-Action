@@ -1,4 +1,4 @@
-module github.com/Leukocyte-Lab/AGH3-Action
+module github.com/ray31245/AGH3-Action
 
 go 1.20
 

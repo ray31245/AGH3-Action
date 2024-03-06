@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	rabbitmqClient "github.com/Leukocyte-Lab/AGH3-Action/pkg/rabbitmq_client"
+	rabbitmqClient "github.com/ray31245/AGH3-Action/pkg/rabbitmq_client"
 )
 
 func failOnError(err error, msg string) {

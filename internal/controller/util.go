@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	actionv1 "github.com/Leukocyte-Lab/AGH3-Action/api/v1"
+	actionv1 "github.com/ray31245/AGH3-Action/api/v1"
 	corev1 "k8s.io/api/core/v1"
 )
 

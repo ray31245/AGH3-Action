@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	actionv1 "github.com/Leukocyte-Lab/AGH3-Action/api/v1"
+	actionv1 "github.com/ray31245/AGH3-Action/api/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"

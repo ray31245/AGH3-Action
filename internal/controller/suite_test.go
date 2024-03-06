@@ -32,7 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	actionv1 "github.com/Leukocyte-Lab/AGH3-Action/api/v1"
+	actionv1 "github.com/ray31245/AGH3-Action/api/v1"
 	//+kubebuilder:scaffold:imports
 )
 
