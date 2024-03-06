@@ -32,10 +32,12 @@ type ActionSpec struct {
 	// identify the action is from same history
 	HistoryID string `json:"historyID"`
 
-	// Specifies the image of worker that will be created when executing a Action.
-	Image string `json:"image"`
-	// Specifies the args of worker that will be created when executing a Action.
-	Args []string `json:"args"`
+	// setup the initContainers of worker that will be created when executing a Action.
+	// +optional
+	InitContainers []Container `json:"initContainers"`
+
+	// setup the containers of worker that will be created when executing a Action.
+	Containers []Container `json:"containers"`
 
 	// If mark TrigerRun to true, when detected by controller, it will run action and resum this value to false to ensure run once
 	TrigerRun bool `json:"trigerRun"`
@@ -44,6 +46,18 @@ type ActionSpec struct {
 
 	// Limit numbers of old history worker
 	WorkerHistoryLimit *int32 `json:"WorkerHistoryLimit"`
+}
+
+type Container struct {
+	Image string `json:"image"`
+	// +optional
+	Command []string `json:"command"`
+	// +optional
+	Args []string `json:"args"`
+	// +optional
+	Env map[string]string `json:"Env"`
+	// +optional
+	VolumeMounts map[string]string `json:"volumeMounts"`
 }
 
 // ActionStatus defines the observed state of Action

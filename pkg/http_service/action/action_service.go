@@ -68,8 +68,12 @@ func createActionHandler(controller ActionControllerInterface) func(http.Respons
 				Namespace: nameSpace,
 			},
 			Spec: actionv1.ActionSpec{
-				Image:              image,
-				Args:               argsSlice,
+				Containers: []actionv1.Container{
+					{
+						Image: image,
+						Args:  argsSlice,
+					},
+				},
 				WorkerHistoryLimit: &workerHistoryLimit,
 			},
 		}
@@ -201,8 +205,12 @@ func StressTestHandler(controller ActionControllerInterface) func(http.ResponseW
 					Labels:    map[string]string{"stressTest": "true"},
 				},
 				Spec: actionv1.ActionSpec{
-					Image:              image,
-					Args:               argsSlice,
+					Containers: []actionv1.Container{
+						{
+							Image: image,
+							Args:  argsSlice,
+						},
+					},
 					WorkerHistoryLimit: &workerHistoryLimit,
 				},
 			}

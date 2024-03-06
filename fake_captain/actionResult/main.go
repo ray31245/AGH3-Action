@@ -22,12 +22,16 @@ func main() {
 	action := rabbitmqClient.ActionModel{
 		Name:      "foo",
 		HistoryID: "aaa",
-		Image:     "busybox",
-		Args: []string{
-			"ping",
-			"127.0.0.1",
-			"-c",
-			"10",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args: []string{
+					"ping",
+					"127.0.0.1",
+					"-c",
+					"10",
+				},
+			},
 		},
 	}
 	ctx, cancel := context.WithCancel(context.Background())

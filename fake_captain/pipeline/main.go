@@ -21,63 +21,101 @@ func main() {
 	action := rabbitmqClient.ActionModel{
 		Name:      "foo",
 		HistoryID: "aaa",
-		Image:     "busybox",
-		Args: []string{
-			"ping",
-			"127.0.0.1",
-			"-c",
-			"60",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args: []string{
+					"ping",
+					"127.0.0.1",
+					"-c",
+					"600",
+				},
+				Env:          map[string]string{"aaa": "123"},
+				VolumeMounts: map[string]string{"share": "/var/stdio"},
+			},
+			{
+				Image: "busybox",
+				Args: []string{
+					"sleep",
+					"300",
+				},
+				VolumeMounts: map[string]string{"share": "/var/stdio"},
+			},
 		},
 	}
 	action1 := rabbitmqClient.ActionModel{
 		Name:      "foo1",
 		HistoryID: "aaa",
-		Image:     "busybox",
-		Args: []string{
-			"ping",
-			"127.0.0.1",
-			"-c",
-			"60",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args: []string{
+					"ping",
+					"127.0.0.1",
+					"-c",
+					"60",
+				},
+			},
 		},
 	}
 	action2 := rabbitmqClient.ActionModel{
 		Name:      "foo2",
 		HistoryID: "aaa",
-		Image:     "busybox",
-		Args: []string{
-			"env",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args: []string{
+					"env",
+				},
+			},
 		},
 	}
 	action1_1 := rabbitmqClient.ActionModel{
 		Name:      "foo1-1",
 		HistoryID: "aaa",
-		Image:     "busybox",
-		Args: []string{
-			"env",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args: []string{
+					"env",
+				},
+			},
 		},
 	}
 	action1_2 := rabbitmqClient.ActionModel{
 		Name:      "foo1-2",
 		HistoryID: "aaa",
-		Image:     "busybox",
-		Args: []string{
-			"env",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args: []string{
+					"env",
+				},
+			},
 		},
 	}
 	action2_1 := rabbitmqClient.ActionModel{
 		Name:      "foo2-1",
 		HistoryID: "aaa",
-		Image:     "busybox",
-		Args: []string{
-			"env",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args: []string{
+					"env",
+				},
+			},
 		},
 	}
 	action2_2 := rabbitmqClient.ActionModel{
 		Name:      "foo2-2",
 		HistoryID: "aaa",
-		Image:     "busybox",
-		Args: []string{
-			"env",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args: []string{
+					"env",
+				},
+			},
 		},
 	}
 

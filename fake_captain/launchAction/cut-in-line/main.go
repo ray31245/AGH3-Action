@@ -20,13 +20,17 @@ func main() {
 	failOnError(err, "Failed to create rabbitmqClient")
 
 	action := rabbitmqClient.ActionModel{
-		Name:  "foo",
-		Image: "busybox",
-		Args: []string{
-			"ping",
-			"127.0.0.1",
-			"-c",
-			"30",
+		Name: "foo",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args: []string{
+					"ping",
+					"127.0.0.1",
+					"-c",
+					"30",
+				},
+			},
 		},
 	}
 	err = client.RPC().CreateAction(rabbitmqClient.CreateActionRequest{

@@ -211,11 +211,20 @@ type ActionOperateMessageRequest struct {
 }
 
 type ActionModel struct {
-	NameSpace string   `json:"nameSpace"`
-	Name      string   `json:"name"`
-	HistoryID string   `json:"historyID"`
-	Image     string   `json:"image"`
-	Args      []string `json:"args"`
+	NameSpace      string           `json:"nameSpace"`
+	Name           string           `json:"name"`
+	HistoryID      string           `json:"historyID"`
+	InitContainers []ContainerModel `json:"initContainers"`
+
+	Containers []ContainerModel `json:"containers"`
+}
+
+type ContainerModel struct {
+	Image        string            `json:"image"`
+	Command      []string          `json:"command"`
+	Args         []string          `json:"args"`
+	Env          map[string]string `json:"Env"`
+	VolumeMounts map[string]string `json:"volumeMounts"`
 }
 
 type SelectOne struct {

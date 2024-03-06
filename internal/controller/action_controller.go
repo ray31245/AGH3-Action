@@ -25,7 +25,6 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -211,24 +210,17 @@ func (r *ActionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 							"purpose": "worker",
 						},
 						RestartPolicy: corev1.RestartPolicyNever,
-						Containers: []corev1.Container{
-							{
-								Name:            "main",
-								Image:           action.Spec.Image,
-								Args:            action.Spec.Args,
-								ImagePullPolicy: corev1.PullIfNotPresent,
-								Resources: corev1.ResourceRequirements{
-									Requests: corev1.ResourceList{
-										corev1.ResourceCPU:    resource.MustParse("500m"),
-										corev1.ResourceMemory: resource.MustParse("512Mi"),
-									},
-								},
-							},
-						},
 					},
 				},
 			},
 		}
+
+		// setup initContainers and containers of worker
+		ActionContainerConverter{
+			containers:     action.Spec.Containers,
+			initContainers: action.Spec.InitContainers,
+		}.Converter(&worker.Spec.Template.Spec)
+
 		if err := ctrl.SetControllerReference(action, worker, r.Scheme); err != nil {
 			return nil, err
 		}

@@ -23,7 +23,6 @@ func main() {
 
 	log.Printf(" [.] Got Error %v", err)
 	log.Println(res)
-	log.Println(res.Action.Image)
 	log.Println(res.Action.Name)
 	log.Println(res.Status)
 	log.Printf("Error is Notfound: %t", errors.Is(err, rabbitmqClient.ErrActionNotfound))

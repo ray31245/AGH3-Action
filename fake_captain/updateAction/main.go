@@ -18,9 +18,13 @@ func main() {
 	failOnError(err, "Failed to create rabbitmqClient")
 
 	action1 := rabbitmqClient.ActionModel{
-		Name:  "foo1",
-		Image: "busybox",
-		Args:  []string{"env"},
+		Name: "foo1",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args:  []string{"env"},
+			},
+		},
 	}
 	err = client.RPC().CreateAction(rabbitmqClient.CreateActionRequest{
 		Action: action1,
@@ -28,9 +32,13 @@ func main() {
 	failOnError(err, "Failed to create action1")
 
 	action2 := rabbitmqClient.ActionModel{
-		Name:  "foo2",
-		Image: "busybox",
-		Args:  []string{"env"},
+		Name: "foo2",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args:  []string{"env"},
+			},
+		},
 	}
 	err = client.RPC().CreateAction(rabbitmqClient.CreateActionRequest{
 		Action: action2,
@@ -65,8 +73,12 @@ func main() {
 	action3 := rabbitmqClient.ActionModel{
 		Name:      "foo3",
 		NameSpace: "test",
-		Image:     "busybox",
-		Args:      []string{"env"},
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args:  []string{"env"},
+			},
+		},
 	}
 	err = client.RPC().UpdateAction(rabbitmqClient.UpdateActionRequest{
 		Selector: rabbitmqClient.SelectOne{Name: action2.Name},

@@ -19,13 +19,17 @@ func main() {
 
 	action := rabbitmqClient.ActionModel{
 		Name:      "foo",
-		Image:     "busybox",
 		HistoryID: "aaa",
-		Args: []string{
-			"ping",
-			"127.0.0.1",
-			"-c",
-			"30",
+		Containers: []rabbitmqClient.ContainerModel{
+			{
+				Image: "busybox",
+				Args: []string{
+					"ping",
+					"127.0.0.1",
+					"-c",
+					"30",
+				},
+			},
 		},
 	}
 	err = client.RPC().CreateAction(rabbitmqClient.CreateActionRequest{

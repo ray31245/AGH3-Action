@@ -50,19 +50,63 @@ spec:
                 description: Limit numbers of old history worker
                 format: int32
                 type: integer
-              args:
-                description: Specifies the args of worker that will be created when
+              containers:
+                description: setup the containers of worker that will be created when
                   executing a Action.
                 items:
-                  type: string
+                  properties:
+                    Env:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    args:
+                      items:
+                        type: string
+                      type: array
+                    command:
+                      items:
+                        type: string
+                      type: array
+                    image:
+                      type: string
+                    volumeMounts:
+                      additionalProperties:
+                        type: string
+                      type: object
+                  required:
+                  - image
+                  type: object
                 type: array
               historyID:
                 description: identify the action is from same history
                 type: string
-              image:
-                description: Specifies the image of worker that will be created when
-                  executing a Action.
-                type: string
+              initContainers:
+                description: setup the initContainers of worker that will be created
+                  when executing a Action.
+                items:
+                  properties:
+                    Env:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    args:
+                      items:
+                        type: string
+                      type: array
+                    command:
+                      items:
+                        type: string
+                      type: array
+                    image:
+                      type: string
+                    volumeMounts:
+                      additionalProperties:
+                        type: string
+                      type: object
+                  required:
+                  - image
+                  type: object
+                type: array
               trigerRun:
                 description: If mark TrigerRun to true, when detected by controller,
                   it will run action and resum this value to false to ensure run once
@@ -73,9 +117,8 @@ spec:
                 type: boolean
             required:
             - WorkerHistoryLimit
-            - args
+            - containers
             - historyID
-            - image
             - trigerRun
             - trigerStop
             type: object

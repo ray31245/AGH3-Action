@@ -273,10 +273,16 @@ func (service RabbitmqService) Run(hook RegisterHook) error {
 				NameSpace: a.Namespace,
 				Name:      a.Name,
 				HistoryID: a.Spec.HistoryID,
-				Image:     a.Spec.Image,
-				Args:      a.Spec.Args,
 			},
 			Status: rabbitmqClient.ActionStatus(a.Status.ActiveStatus),
+		}
+		// setup initContainers
+		for _, c := range a.Spec.InitContainers {
+			resContent.Action.InitContainers = append(resContent.Action.InitContainers, rabbitmqClient.ContainerModel(c))
+		}
+		// setup containers
+		for _, c := range a.Spec.Containers {
+			resContent.Action.Containers = append(resContent.Action.Containers, rabbitmqClient.ContainerModel(c))
 		}
 		pod, err := service.ac.GetPodByAction(&a)
 		if err != nil {
@@ -341,10 +347,16 @@ func (service RabbitmqService) createActionHandler(contentStr string, d amqp.Del
 		},
 		Spec: actionv1.ActionSpec{
 			HistoryID:          content.Action.HistoryID,
-			Image:              content.Action.Image,
-			Args:               content.Action.Args,
 			WorkerHistoryLimit: &workerHistoryLimit,
 		},
+	}
+	// setup initContainers
+	for _, c := range content.Action.InitContainers {
+		action.Spec.InitContainers = append(action.Spec.InitContainers, actionv1.Container(c))
+	}
+	// setup containers
+	for _, c := range content.Action.Containers {
+		action.Spec.Containers = append(action.Spec.Containers, actionv1.Container(c))
 	}
 	if err := service.ac.CreateAction(&action); err != nil {
 		codes := []rabbitmqClient.ErrorCode{rabbitmqClient.ErrorCodeCreateAction}
@@ -391,10 +403,16 @@ func (service RabbitmqService) getActionHandler(contentStr string, d amqp.Delive
 			NameSpace: action.Namespace,
 			Name:      action.Name,
 			HistoryID: action.Spec.HistoryID,
-			Image:     action.Spec.Image,
-			Args:      action.Spec.Args,
 		},
 		Status: rabbitmqClient.ActionStatus(action.Status.ActiveStatus),
+	}
+	// setup initContainers
+	for _, c := range action.Spec.InitContainers {
+		resContent.Action.InitContainers = append(resContent.Action.InitContainers, rabbitmqClient.ContainerModel(c))
+	}
+	// setup containers
+	for _, c := range action.Spec.Containers {
+		resContent.Action.Containers = append(resContent.Action.Containers, rabbitmqClient.ContainerModel(c))
 	}
 	res, err := json.Marshal(resContent)
 	if err != nil {
@@ -423,17 +441,23 @@ func (service RabbitmqService) getActionByHistoryIDHandler(contentStr string, d 
 		return
 	}
 	resContent := rabbitmqClient.GetActionByHistoryResContent{ActionList: []rabbitmqClient.GetActionResContent{}}
-	for _, a := range action {
+	for i, a := range action {
 		resContent.ActionList = append(resContent.ActionList, rabbitmqClient.GetActionResContent{
 			Action: rabbitmqClient.ActionModel{
 				NameSpace: a.Namespace,
 				Name:      a.Name,
 				HistoryID: a.Spec.HistoryID,
-				Image:     a.Spec.Image,
-				Args:      a.Spec.Args,
 			},
 			Status: rabbitmqClient.ActionStatus(a.Status.ActiveStatus),
 		})
+		// setup initContainers
+		for _, c := range a.Spec.InitContainers {
+			resContent.ActionList[i].Action.InitContainers = append(resContent.ActionList[i].Action.InitContainers, rabbitmqClient.ContainerModel(c))
+		}
+		// setup containers
+		for _, c := range a.Spec.Containers {
+			resContent.ActionList[i].Action.Containers = append(resContent.ActionList[i].Action.Containers, rabbitmqClient.ContainerModel(c))
+		}
 	}
 	res, err := json.Marshal(resContent)
 	if err != nil {
@@ -506,10 +530,16 @@ func (service RabbitmqService) updateActionHandler(contentStr string, d amqp.Del
 		},
 		Spec: actionv1.ActionSpec{
 			HistoryID:          content.Action.HistoryID,
-			Image:              content.Action.Image,
-			Args:               content.Action.Args,
 			WorkerHistoryLimit: &workerHistoryLimit,
 		},
+	}
+	// setup initContainers
+	for _, c := range content.Action.InitContainers {
+		newAction.Spec.InitContainers = append(newAction.Spec.InitContainers, actionv1.Container(c))
+	}
+	// setup containers
+	for _, c := range content.Action.Containers {
+		newAction.Spec.Containers = append(newAction.Spec.Containers, actionv1.Container(c))
 	}
 	if err := service.ac.CreateAction(newAction); err != nil {
 		codes := []rabbitmqClient.ErrorCode{rabbitmqClient.ErrorCodeCreateAction}
@@ -697,7 +727,7 @@ func (service RabbitmqService) watchActionLogHandler(contentStr string, d amqp.D
 
 func (service RabbitmqService) getLogsStream(ctx context.Context, pod corev1.Pod, fallow bool) (io.ReadCloser, error) {
 	stream, err := service.k8sInterface.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
-		Container: "main",
+		Container: "0",
 		Follow:    fallow,
 	}).Stream(ctx)
 	if err != nil {
